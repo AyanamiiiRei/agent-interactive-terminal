@@ -16,6 +16,7 @@
 
 > **状态**：M1 的主体、M2 的会话层（控制租约、密码挂起、密钥注入）、M3 的 shell
 > 保真和会话胶囊都已经落地，二十九个测试在 Linux 的 Node 20 和 Node 22 上通过。
+> 仓库同时以 DSH bundle 的形式发布，并进入了插件市场索引。
 > 还没做的条目在 [ROADMAP.md](ROADMAP.md)。
 
 ## ✨ 为什么需要它
@@ -31,6 +32,29 @@ stdout 和 stderr。这个模型是无状态的、一次性的、基于管道的
 
 这个项目把终端会话变成一份有身份、有屏幕、有相位、有控制租约的资源，让智能体
 读取离散的屏幕快照，而不是订阅一条字节流。
+
+## 🧩 作为 DSH 插件
+
+这个仓库同时是一个 DeepSeek Harness 的 bundle。启用之后，它向当前 profile 里的
+每个智能体注册八个 `terminal_*` 工具，并且在 Plugins 页给出一张配置卡：默认 shell
+可以选跟随 `$SHELL` 的自动模式、`zsh` 或者 `bash`，同时打开的会话数默认是四。
+
+在 Plugins 的 Discover 标签页里添加这个索引：
+
+```text
+https://raw.githubusercontent.com/AyanamiiiRei/agent-interactive-terminal/main/plugin-market.json
+```
+
+然后搜索 `agent-interactive-terminal` 安装。也可以跳过市场，在 Add plugin 里直接
+填 Git 规格：
+
+```bash
+git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#19cab83a10f46a414f0e9371d464c8d9d7791537
+```
+
+插件市场本身是 DSH 的实验性 bundle，第一次启用需要重启 DSH；终端插件是普通的
+bundle 行，装好之后由 loader 加载。配置卡里改的 shell 只影响之后新开的会话，已经
+打开的会话保持原来的 shell。
 
 ## 🚀 快速开始
 

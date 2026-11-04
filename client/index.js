@@ -57,6 +57,10 @@ window.__ModuleLoader__.load({
         setValue(fallback)
       }, [fallback])
 
+      if (props.view === 'summary') {
+        return React.createElement('span', null, t('description'))
+      }
+
       if (!form) {
         return React.createElement('p', { style: { color: 'var(--dsw-alias-label-tertiary)', fontSize: 13 } }, t('unavailable'))
       }

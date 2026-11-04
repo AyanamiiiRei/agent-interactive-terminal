@@ -65,6 +65,18 @@ and control changes hands deliberately.
       non-interactive alternatives.
 - [ ] Windows parity for keys, alternate screen, and foreground inspection.
 
+## M4: Ship as a Harness bundle
+
+- [x] Bundle patch, `apply` entry, and per-agent registries so the eight tools
+      mount in a DSH profile.
+- [x] Config schema for the default shell and the session limit, with a browser
+      card on the Plugins page.
+- [x] Locale metadata, an icon, and a `dsh.client` browser half.
+- [x] A format-1 plugin market index served from the repository, installing the
+      bundle from a pinned commit.
+- [ ] npm registry publication. The market entry uses the Git source until the
+      package can be published.
+
 ## Explicit non-goals
 
 - Driving a terminal the user opened outside the sandbox.

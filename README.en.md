@@ -17,6 +17,7 @@
 > **Status.** M1 is in place, the M2 session layer (control lease, password
 > suspension, secret injection) has landed, and M3's shell fidelity and session
 > capsule are done. Twenty-nine tests pass on Linux with Node 20 and Node 22.
+> The repository also ships as a DSH bundle listed in a plugin market index.
 > Open items are tracked in [ROADMAP.md](ROADMAP.md).
 
 ## ✨ Why this exists
@@ -37,6 +38,32 @@ agent a picture of what is currently on screen.
 This project turns a terminal session into a resource with an identity, a
 screen, a phase, and a control lease, so the agent reads discrete screen
 snapshots instead of subscribing to a byte stream.
+
+## 🧩 As a DeepSeek Harness plugin
+
+This repository is also a DeepSeek Harness bundle. Once enabled, it registers
+the eight `terminal_*` tools for every agent in the current profile and adds a
+configuration card on the Plugins page: the default shell can follow `$SHELL`,
+or be pinned to `zsh` or `bash`, and the number of concurrent sessions defaults
+to four.
+
+Add this index on the Discover tab of the Plugins page:
+
+```text
+https://raw.githubusercontent.com/AyanamiiiRei/agent-interactive-terminal/main/plugin-market.json
+```
+
+Then search for `agent-interactive-terminal` and install it. You can also skip
+the market and paste the Git spec into Add plugin:
+
+```bash
+git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#19cab83a10f46a414f0e9371d464c8d9d7791537
+```
+
+The plugin market itself is an experimental DSH bundle and needs a DSH restart
+the first time it is enabled; the terminal plugin is an ordinary bundle row and
+is loaded by the loader. Changing the shell in the configuration card affects
+only sessions opened afterwards; existing sessions keep their shell.
 
 ## 🚀 Quick start
 
