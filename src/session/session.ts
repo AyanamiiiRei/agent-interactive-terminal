@@ -112,6 +112,7 @@ export class TerminalSession {
   private secretMuted = false
   private rawTail = ''
   private lastOutputAt = Date.now()
+  private lastWriteAt = 0
   private lastExitCode: number | null = null
   private pollTimer: NodeJS.Timeout | undefined
   private notifyScheduled = false
@@ -300,6 +301,7 @@ export class TerminalSession {
 
     this.pty.write(payload)
     this.lastOutputAt = Date.now()
+    this.lastWriteAt = Date.now()
     const submitting = submit || /[\r\n]/.test(text)
     if (origin === 'human' && submitting && this.leaseState.suspended) {
       // The person has supplied the secret; the agent may drive again, and the
@@ -349,10 +351,13 @@ export class TerminalSession {
         if (spec.match.some((pattern) => text.includes(pattern))) return 'matched'
       }
       if (!this.awaitingCommand && settleOn.includes(this.phaseValue)) {
-        // An idle shell prompt is a hard signal. A foreground program that
-        // reads stdin needs a short quiet window, otherwise a REPL settles on
-        // the echo of the input before it has printed the result.
-        if (this.phaseValue === 'idle' || Date.now() - this.lastOutputAt >= 120) {
+        // An idle prompt is a hard signal, but a prompt marker emitted for the
+        // previous command can arrive just after a new write. Give fresh writes
+        // a short window so the echo of the new command lands first. A program
+        // that reads stdin needs a quiet window for the same reason.
+        const quietFor = Date.now() - this.lastOutputAt
+        const sinceWrite = Date.now() - this.lastWriteAt
+        if (this.phaseValue === 'idle' ? sinceWrite >= 120 : quietFor >= 120) {
           return 'settled'
         }
       }
