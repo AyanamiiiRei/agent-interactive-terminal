@@ -49,7 +49,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/AyanamiiiRei/agent-interactive-terminal",
-            "commit": "19cab83a10f46a414f0e9371d464c8d9d7791537"
+            "commit": "8af2def3fc9474594b6420a10a70ab42a81d9acb"
           },
           "engines": {}
         }
