@@ -9,22 +9,27 @@ model, so the screen model comes first.
 The goal is a single-agent terminal that behaves like a terminal, with a screen
 the model can reason about and waits that settle for the right reason.
 
-- [ ] Screen model built on a headless emulator: alternate screen, scrollback,
+**Status: mostly done.** The unchecked items are the ones that need the shared
+session service from M2 or a wake channel from the harness.
+
+- [x] Screen model built on a headless emulator: alternate screen, scrollback,
       soft-wrap joining, cursor, title.
-- [ ] Text projection with a stable status line: shell, cwd, size, alt-screen
+- [x] Text projection with a stable status line: shell, cwd, size, alt-screen
       flag, lease, phase, revision, quiet time.
-- [ ] Differential snapshots: return only changed rows when the screen is
+- [x] Differential snapshots: return only changed rows when the screen is
       mostly stable, and mark reflow after a resize.
-- [ ] Wait engine with literal matches, quiet time, timeout, and phase settling,
+- [x] Wait engine with literal matches, quiet time, timeout, and phase settling,
       evaluated in a defined priority order.
-- [ ] Eight model-facing tools: open, send, wait, snapshot, key, resize, close,
+- [x] Eight model-facing tools: open, send, wait, snapshot, key, resize, close,
       list.
-- [ ] Named keys, including interrupt, EOF, suspend, and arrow navigation.
-- [ ] Bracketed paste for multi-line input so a script is not executed one line
+- [x] Named keys, including interrupt, EOF, suspend, and arrow navigation.
+- [x] Bracketed paste for multi-line input so a script is not executed one line
       at a time.
 - [ ] Background watch that settles on a pattern and wakes an idle agent.
-- [ ] Session limits, idle reclamation, result caps, and an audit record for
-      every write.
+      (Needs the harness job wake channel; `terminal_wait` covers the polling
+      case for now.)
+- [ ] Session limits and result caps are done; idle reclamation and the
+      per-write audit record are still open.
 
 ## M2: One terminal, two writers
 
@@ -40,8 +45,10 @@ and control changes hands deliberately.
 - [ ] Secret injection at spawn time from a credential store, so the value never
       crosses the terminal.
 - [ ] Redaction spans for sensitive writes in the agent projection.
-- [ ] Shell fidelity: follow the user's login shell and load its startup files,
+- [x] Shell fidelity: follow the user's login shell and load its startup files,
       with prompt markers installed after them rather than overwritten by them.
+      Bash uses a wrapper rcfile; other shells fall back to foreground-process
+      inspection, and a native zsh `precmd` hook is the next refinement.
 - [ ] Risk classification on submitted command lines, with high-risk operations
       routed to the human.
 

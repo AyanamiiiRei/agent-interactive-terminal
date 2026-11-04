@@ -2,9 +2,12 @@
 
 Stateful, PTY-backed terminal sessions that an LLM agent and a human can share.
 
-> **Status: design stage.** This repository currently holds the design and the
-> roadmap. The implementation will land here in the open, starting with the M1
-> milestone in [ROADMAP.md](ROADMAP.md).
+> **Status: early implementation.** M1 is largely in place: a real PTY, a
+> headless screen model, phase and wait handling, and the eight model-facing
+> tools, with tests. Shared sessions, the control lease, and password handoff
+> are the M2 milestone in [ROADMAP.md](ROADMAP.md). The design document in
+> [docs/design.zh.md](docs/design.zh.md) remains the reference for the target
+> interfaces.
 
 ## The problem
 
@@ -44,6 +47,90 @@ a rendered screen plus a status line, never a raw byte stream.
 - **Wake on events.** Log watching reuses the existing background job channel,
   so an idle agent is woken when a pattern fires instead of polling forever.
 
+## Try it
+
+Requires Node.js 20 or newer, a C++ toolchain for `node-pty`, and Linux or
+macOS. The foreground-process inspection in this milestone is Linux-specific;
+elsewhere the session falls back to prompt markers and quiet time.
+
+```bash
+git clone https://github.com/AyanamiiiRei/agent-interactive-terminal.git
+cd agent-interactive-terminal
+npm install
+npm test
+npm run demo -- "git status"
+```
+
+`npm run demo` without arguments starts an interactive loop that drives the
+session through the same tool surface the model sees:
+
+```text
+› ls
+› /snap
+› /wait 5000
+› /key ctrl-c
+› /resize 120 40
+› /quit
+```
+
+## Use it from code
+
+The library has no agent-framework dependency. Use the session directly when you
+know what to wait for:
+
+```ts
+import { TerminalRegistry } from 'agent-interactive-terminal'
+
+const sessions = new TerminalRegistry({ maxSessions: 2 })
+const session = await sessions.open({ name: 'build', cols: 100, rows: 30 })
+
+await session.write('npm run dev')
+const result = await session.wait({ match: ['ready in'], timeoutMs: 60_000 })
+console.log(result.outcome, result.phase)
+console.log(result.view.text)
+
+await session.close()
+```
+
+Or register the tool definitions with your own model runtime:
+
+```ts
+import { createTerminalTools, toolIndex, TerminalRegistry } from 'agent-interactive-terminal'
+
+const registry = new TerminalRegistry()
+const tools = toolIndex(createTerminalTools(registry))
+// Expose each tool's name, description, and parameters schema to the model,
+// then dispatch calls through tools.get(name).execute(args).
+```
+
+The eight tools are `terminal_open`, `terminal_send`, `terminal_wait`,
+`terminal_snapshot`, `terminal_key`, `terminal_resize`, `terminal_close`, and
+`terminal_list`.
+
+## What works today
+
+- A real PTY per session, launched from `$SHELL` (or an explicit path), with
+  `TERM=xterm-256color`, the working directory, and extra environment entries.
+- A headless xterm screen model with alternate-screen handling, scrollback,
+  soft-wrap joining, cursor and title tracking, and removal of shell ghost text
+  drawn after the cursor in dim cells.
+- Two projections from one screen: a text screen for the model and a serialized
+  ANSI snapshot for the browser attach stream.
+- Phases `starting`, `running`, `waiting_input`, `idle`, and `exited`. Bash gets
+  prompt markers installed by a wrapper rcfile; zsh and other shells fall back to
+  foreground-process inspection plus a short quiet window.
+- A wait engine with literal matches, quiet time, phase settling, and timeout,
+  evaluated in a fixed priority order, plus Ctrl-C style interrupts and
+  bracketed paste.
+- Named keys including interrupt, EOF, suspend, arrows, paging, and common
+  Ctrl chords, plus resize and process-tree cleanup on close.
+- Seventeen tests covering the screen model, session lifecycle, and tools.
+
+Not yet implemented, by design: browser attach to the same live session, the
+single-writer lease with takeover, password detection and human handoff, secret
+injection, wake-on-pattern jobs, and Windows parity. See
+[ROADMAP.md](ROADMAP.md).
+
 ## Design at a glance
 
 The design is organised in five layers:
@@ -72,22 +159,25 @@ document is written in Chinese; an English translation is welcome.
 ## Repository layout
 
 ```
-docs/design.zh.md   Full design document
-ROADMAP.md          Milestones, scope, and explicit non-goals
-README.md           This file
-README.zh.md        Chinese README
+src/screen/model.ts    Headless xterm screen model and both projections
+src/pty/pty.ts         node-pty wrapper
+src/pty/proc.ts        Linux foreground group and stdin-wait inspection
+src/session/session.ts TerminalSession: write, wait, key, snapshot, resize, close
+src/session/registry.ts Session ids, limits, lookup, and cleanup
+src/session/shell.ts   $SHELL resolution and startup-file wrapper
+src/tools/index.ts     Eight model-facing tool definitions
+src/cli/demo.ts        Interactive demo over the tool surface
+test/                  Screen, session, and tool tests
+docs/design.zh.md      Full design document
+ROADMAP.md             Milestones, scope, and explicit non-goals
 ```
-
-There is no source code yet. That is intentional: the design was written against
-a real codebase, and publishing it first keeps the scope honest.
 
 ## Status and roadmap
 
-The first milestone is the screen model and the tool surface, which works for a
-single agent without any sharing. The second adds the shared session, the lease,
-and password handoff. The third polishes shell fidelity and multi-session
-context. [ROADMAP.md](ROADMAP.md) lists every item and every deliberate
-non-goal.
+M1 covers a single agent with a readable screen and waits that settle for the
+right reason. M2 adds the shared session, the lease, and password handoff. M3
+polishes shell fidelity and multi-session context. [ROADMAP.md](ROADMAP.md) lists
+every item and every deliberate non-goal.
 
 ## Related work
 

@@ -1,0 +1,57 @@
+{
+  "name": "agent-interactive-terminal",
+  "version": "0.0.1",
+  "description": "Stateful PTY terminal sessions for LLM agents: screen snapshots, key input, wait conditions, and a terminal a human and an agent can share.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "tsx src/cli/demo.ts"
+  },
+  "dependencies": {
+    "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git"
+  },
+  "homepage": "https://github.com/AyanamiiiRei/agent-interactive-terminal#readme",
+  "bugs": {
+    "url": "https://github.com/AyanamiiiRei/agent-interactive-terminal/issues"
+  },
+  "author": "Ribo Skubla",
+  "keywords": [
+    "agent",
+    "terminal",
+    "pty",
+    "human-in-the-loop",
+    "llm",
+    "tool-calling",
+    "xterm"
+  ]
+}

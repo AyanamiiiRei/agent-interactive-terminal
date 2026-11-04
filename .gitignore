@@ -1,4 +1,7 @@
 node_modules/
 dist/
+scratch/
+.run/
+coverage/
 *.log
 .DS_Store

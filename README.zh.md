@@ -2,8 +2,10 @@
 
 面向智能体、同时也能让人共用的有状态 PTY 终端会话。
 
-> **当前处于设计阶段。** 仓库里目前只有设计文档和路线图，实现会按
-> [ROADMAP.md](ROADMAP.md) 里的里程碑逐步开源。
+> **当前处于实现早期。** M1 的主体已经落地：真正的 PTY、headless 屏幕模型、
+> 相位与等待判定、八个面向模型的工具，以及测试。共享会话、控制租约和密码交接
+> 属于 [ROADMAP.md](ROADMAP.md) 里的 M2 里程碑。目标接口的参考仍然是
+> [docs/design.zh.md](docs/design.zh.md)。
 
 ## 要解决的问题
 
@@ -34,6 +36,83 @@ stdout 和 stderr。这个模型是无状态的、一次性的、基于管道的
 - **事件唤醒。** 日志守夜复用已有的后台任务通道，命中时唤醒空闲的智能体，而不是
   让它一直轮询。
 
+## 试一下
+
+需要 Node.js 20 或更新版本、用于编译 `node-pty` 的 C++ 工具链，以及 Linux 或
+macOS。本里程碑里的前台进程观测只在 Linux 上生效，其他平台会退回提示符标记加
+静默窗口的判定方式。
+
+```bash
+git clone https://github.com/AyanamiiiRei/agent-interactive-terminal.git
+cd agent-interactive-terminal
+npm install
+npm test
+npm run demo -- "git status"
+```
+
+`npm run demo` 不带参数时会进入一个交互循环，走的是和模型完全相同的工具面：
+
+```text
+› ls
+› /snap
+› /wait 5000
+› /key ctrl-c
+› /resize 120 40
+› /quit
+```
+
+## 在代码里使用
+
+这个库不依赖任何智能体框架。如果你清楚要等什么，可以直接用会话对象：
+
+```ts
+import { TerminalRegistry } from 'agent-interactive-terminal'
+
+const sessions = new TerminalRegistry({ maxSessions: 2 })
+const session = await sessions.open({ name: 'build', cols: 100, rows: 30 })
+
+await session.write('npm run dev')
+const result = await session.wait({ match: ['ready in'], timeoutMs: 60_000 })
+console.log(result.outcome, result.phase)
+console.log(result.view.text)
+
+await session.close()
+```
+
+也可以把这些工具定义注册到你自己的模型运行时里：
+
+```ts
+import { createTerminalTools, toolIndex, TerminalRegistry } from 'agent-interactive-terminal'
+
+const registry = new TerminalRegistry()
+const tools = toolIndex(createTerminalTools(registry))
+// 把每个工具的名称、描述和参数 schema 交给模型，
+// 再把调用分发到 tools.get(name).execute(args)。
+```
+
+八个工具分别是 `terminal_open`、`terminal_send`、`terminal_wait`、
+`terminal_snapshot`、`terminal_key`、`terminal_resize`、`terminal_close` 和
+`terminal_list`。
+
+## 现在已经能用的部分
+
+- 每个会话一条真正的 PTY，从 `$SHELL`（或指定路径）启动，带
+  `TERM=xterm-256color`、工作目录和额外的环境变量。
+- headless xterm 屏幕模型，支持备用屏幕、滚动回溯、软换行合并、光标与标题跟踪，
+  以及去掉 shell 画在光标之后、用暗色格子渲染的补全建议。
+- 同一份屏幕的两种投影：给模型的文本屏幕，和给浏览器 attach 流的序列化 ANSI。
+- 相位 `starting`、`running`、`waiting_input`、`idle`、`exited`。bash 通过包装
+  的 rcfile 装提示符标记；zsh 和其他 shell 退回前台进程组加短暂静默窗口的判定。
+- 等待引擎支持字面量命中、静默、相位稳定和超时，按固定优先级判定；另外支持
+  Ctrl-C 式中断和括号粘贴。
+- 具名按键覆盖中断、EOF、挂起、方向键、翻页和常用 Ctrl 组合，另外支持调整尺寸
+  和关闭时清理整棵进程树。
+- 十七个测试，覆盖屏幕模型、会话生命周期和工具层。
+
+按设计尚未实现的部分：浏览器接入同一条活动会话、带接管的单写者租约、密码检测与
+人工交接、密钥注入、按模式唤醒的后台任务，以及 Windows 对齐。详见
+[ROADMAP.md](ROADMAP.md)。
+
 ## 设计分层
 
 整个设计分五层：
@@ -54,20 +133,24 @@ stdout 和 stderr。这个模型是无状态的、一次性的、基于管道的
 ## 仓库结构
 
 ```
-docs/design.zh.md   完整设计文档
-ROADMAP.md          里程碑、范围与明确的非目标
-README.md           英文说明
-README.zh.md        本文件
+src/screen/model.ts    headless xterm 屏幕模型与两种投影
+src/pty/pty.ts         node-pty 包装
+src/pty/proc.ts        Linux 前台进程组与 stdin 等待观测
+src/session/session.ts TerminalSession：写入、等待、按键、快照、尺寸、关闭
+src/session/registry.ts 会话 id、并发上限、查找与清理
+src/session/shell.ts   $SHELL 解析与启动文件包装
+src/tools/index.ts     八个面向模型的工具定义
+src/cli/demo.ts        走工具面的交互演示
+test/                  屏幕、会话与工具测试
+docs/design.zh.md      完整设计文档
+ROADMAP.md             里程碑、范围与明确的非目标
 ```
-
-目前还没有源码。这是有意为之：设计是对着真实代码写的，先把范围定下来，实现再
-按里程碑补。
 
 ## 状态与路线图
 
-第一个里程碑做屏幕模型和工具面，单个智能体就能用，不涉及共享。第二个里程碑加
-共享会话、控制租约和密码交接。第三个里程碑打磨 shell 保真与多会话上下文。
-[ROADMAP.md](ROADMAP.md) 列出了每一项和每一个明确的非目标。
+M1 做单智能体的可读屏幕和判定准确的等待。M2 加共享会话、控制租约和密码交接。
+M3 打磨 shell 保真与多会话上下文。[ROADMAP.md](ROADMAP.md) 列出了每一项和每一个
+明确的非目标。
 
 ## 相关工作
 
