@@ -1,71 +1,60 @@
-# Agent Interactive Terminal
+<h1 align="center">🖥️ Agent Interactive Terminal</h1>
 
-Stateful, PTY-backed terminal sessions that an LLM agent and a human can share.
+<p align="center">有状态、跑在真实 PTY 上的终端会话，让智能体和人在同一块屏幕前协作。</p>
 
-> **Status: early implementation.** M1 is in place, and the M2 session layer
-> has landed too: a real PTY, a headless screen model, phase and wait handling,
-> the eight model-facing tools, a single-writer control lease, password
-> suspension, and secret injection, all with tests. What remains from M2 is the
-> browser attach to a live session and the per-write audit record. The design
-> document in [docs/design.zh.md](docs/design.zh.md) remains the reference for
-> the target interfaces.
+<p align="center">
+  🌐 <b>简体中文</b> · <a href="README.en.md">English</a>
+</p>
 
-## The problem
+<p align="center">
+  <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml"><img src="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node"></a>
+  <img src="https://img.shields.io/badge/tests-29%20passing-brightgreen" alt="Tests">
+  <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
+</p>
 
-Every terminal an agent can call today is really `exec`: spawn a child process,
-wait for it to exit, collect stdout and stderr. That model is stateless,
-one-shot, and pipe based. It has no TTY, so programs never enter interactive
-mode, shell startup files are not loaded the way a person would expect, long
-tasks show no progress, and a human cannot work in the same terminal as the
-agent without copying text back and forth.
+> **状态**：M1 的主体、M2 的会话层（控制租约、密码挂起、密钥注入）、M3 的 shell
+> 保真和会话胶囊都已经落地，二十九个测试在 Linux 的 Node 20 和 Node 22 上通过。
+> 还没做的条目在 [ROADMAP.md](ROADMAP.md)。
 
-The usual workarounds all fail in the same place. Feeding `yes` into stdin is
-not the same as answering a prompt. Polling a pipe for a password prompt leaks
-the password into the transcript. Waiting for silence cannot tell a finished
-command from a slow one, and no amount of parsing raw ANSI bytes gives the
-agent a picture of what is currently on screen.
+## ✨ 为什么需要它
 
-## The proposal
+今天智能体能够调用的“终端”，本质上都是 `exec`：启动子进程、等它退出、收集
+stdout 和 stderr。这个模型是无状态的、一次性的、基于管道的。它没有 TTY，所以
+程序不会进入交互模式，shell 的启动配置不会按人的预期加载，长任务看不到过程，
+人和智能体也没法在同一个终端里协作，只能靠复制粘贴。
 
-A persistent terminal session is a resource with an identity, a screen, an
-activity state, and a control lease. Tools operate on `session_id` and get back
-a rendered screen plus a status line, never a raw byte stream.
+常见的绕法都卡在同一个地方。往 stdin 里灌 `yes` 不等于回答提示；轮询管道等密码
+提示，会把密码泄漏进对话记录；等输出安静区分不了“跑完了”和“跑得慢”；而无论
+怎么解析 ANSI 字节，智能体都拿不到“此刻屏幕上是什么”。
 
-- **Real PTY.** Sessions run on a pseudo terminal, so programs detect a
-  terminal, enter interactive mode, render progress, and load their startup
-  files.
-- **Screen, not stream.** A terminal emulator turns ANSI into a current screen.
-  The agent pulls a discrete snapshot; it never subscribes to a live feed.
-- **Wait conditions.** A call can wait for a literal pattern, for output to go
-  quiet, for a timeout, for the shell to become idle, or for the process to
-  exit, whichever happens first.
-- **One writer at a time.** A lease decides whether the agent or the human owns
-  the keyboard. The human can take over at any moment; the agent cannot take it
-  back on its own.
-- **Password handoff.** When a credential prompt appears, the session suspends
-  the agent, hands control to the human, and tells the model to stop. The secret
-  never enters the model context.
-- **Wake on events.** Log watching reuses the existing background job channel,
-  so an idle agent is woken when a pattern fires instead of polling forever.
+这个项目把终端会话变成一份有身份、有屏幕、有相位、有控制租约的资源，让智能体
+读取离散的屏幕快照，而不是订阅一条字节流。
 
-## Try it
+## 🚀 快速开始
 
-Requires Node.js 20 or newer and a C++ toolchain for `node-pty`. Development
-and CI target Linux: the foreground-process inspection uses `/proc`, and macOS
-and Windows are not verified yet, so the session falls back to prompt markers
-and quiet time there.
+需要 Node.js 20 或更新版本，以及用于编译 `node-pty` 的 C++ 工具链。开发和 CI
+目前只针对 Linux：前台进程观测依赖 `/proc`，macOS 和 Windows 尚未验证。
 
 ```bash
+# 克隆并安装
 git clone https://github.com/AyanamiiiRei/agent-interactive-terminal.git
 cd agent-interactive-terminal
 npm install
 npm test
+
+# 跑一条命令，看智能体视角的屏幕和状态行
 npm run demo -- "git status"
-npm run attach        # then open http://127.0.0.1:7787/
+
+# 交互循环：直接输入命令，另有 /snap、/wait、/key、/resize、/quit
+npm run demo
+
+# 浏览器接入：打开终端里打印的地址
+npm run attach
 ```
 
-`npm run demo` without arguments starts an interactive loop that drives the
-session through the same tool surface the model sees:
+演示循环长这样：
 
 ```text
 › ls
@@ -76,10 +65,9 @@ session through the same tool surface the model sees:
 › /quit
 ```
 
-## Use it from code
+## 🧰 在代码里使用
 
-The library has no agent-framework dependency. Use the session directly when you
-know what to wait for:
+这个库不依赖任何智能体框架。如果你清楚要等什么，可以直接用会话对象：
 
 ```ts
 import { TerminalRegistry } from 'agent-interactive-terminal'
@@ -95,45 +83,40 @@ console.log(result.view.text)
 await session.close()
 ```
 
-Or register the tool definitions with your own model runtime:
+也可以把这些工具定义注册到你自己的模型运行时里：
 
 ```ts
 import { createTerminalTools, toolIndex, TerminalRegistry } from 'agent-interactive-terminal'
 
 const registry = new TerminalRegistry()
 const tools = toolIndex(createTerminalTools(registry))
-// Expose each tool's name, description, and parameters schema to the model,
-// then dispatch calls through tools.get(name).execute(args).
+// 把每个工具的名称、描述和参数 schema 交给模型，
+// 再把调用分发到 tools.get(name).execute(args)。
 ```
 
-The eight tools are `terminal_open`, `terminal_send`, `terminal_wait`,
-`terminal_snapshot`, `terminal_key`, `terminal_resize`, `terminal_close`, and
-`terminal_list`.
+### 🤝 人机协作
 
-### Human in the loop
-
-The lease decides who owns the keyboard. A person can take over at any time; the
-agent then gets `LEASE_DENIED` on writes and `human_took_over` from a wait, and
-cannot take control back on its own:
+租约决定键盘归谁。人可以随时接管；接管之后智能体的写入会得到 `LEASE_DENIED`，
+等待会得到 `human_took_over`，而且它不能自己抢回来：
 
 ```ts
-session.takeOver()                     // the person is driving now
+session.takeOver()                     // 现在由人操作
 await session.write('ls', { origin: 'human' })
-session.handBack()                     // the person gives it back
+session.handBack()                     // 人把控制权交回
 ```
 
-When a credential prompt appears, the session suspends the agent, settles the
-pending wait with `human_required`, and holds the lease until a person answers:
+出现凭据提示时，会话挂起智能体，把等待结算成 `human_required`，并一直持有租约，
+直到有人回答：
 
 ```ts
 const asked = await session.wait({ timeoutMs: 30_000 })
 if (asked.outcome === 'human_required') {
-  // Show the prompt to the human. Never ask the model for the secret.
+  // 把提示展示给人。永远不要让模型去要这个密码。
   await session.write(secretFromHuman, { origin: 'human' })
 }
 ```
 
-Secrets can be injected at spawn time, so a value never crosses the terminal:
+密钥可以在启动时注入，值不会经过终端：
 
 ```ts
 const session = await sessions.open({
@@ -141,116 +124,124 @@ const session = await sessions.open({
 })
 ```
 
-### Browser attach
+### 🌐 浏览器接入
 
-`npm run attach` starts a local demo that renders the same session in a browser
-through xterm.js and a WebSocket. The page is read-only until you press "Take
-over"; from then on keystrokes go through `session.write(..., { origin: 'human' })`,
-and "Hand back" returns the keyboard to the agent. The demo server binds to
-`127.0.0.1`, serves xterm.js from `node_modules`, and has no authentication, so
-treat it as an example rather than a deployment.
+`npm run attach` 会启动一个本地演示：用 xterm.js 和 WebSocket 把同一条会话渲染
+到浏览器里。页面默认只读，按下 “Take over” 之后键盘输入才会以
+`session.write(..., { origin: 'human' })` 送进终端；点 “Hand back” 把控制权交回
+智能体。演示服务只绑定 `127.0.0.1`，xterm.js 从 `node_modules` 提供，也没有任何
+鉴权，所以请把它当成示例而不是部署方案。
 
-## What works today
+## 📦 现在已经能用的部分
 
-- A real PTY per session, launched from `$SHELL` (or an explicit path), with
-  `TERM=xterm-256color`, the working directory, and extra environment entries.
-- A headless xterm screen model with alternate-screen handling, scrollback,
-  soft-wrap joining, cursor and title tracking, and removal of shell ghost text
-  drawn after the cursor in dim cells.
-- Two projections from one screen: a text screen for the model and a serialized
-  ANSI snapshot for the browser attach stream.
-- Phases `starting`, `running`, `waiting_input`, `idle`, and `exited`. Bash and
-  zsh get prompt markers installed after their own startup files, through a
-  wrapper rcfile that preserves the user's configuration; fish and other shells
-  fall back to foreground-process inspection plus a short quiet window.
-- A single-writer lease with human takeover and handback, password-prompt
-  detection that suspends the agent and settles waits with `human_required`, and
-  secret injection at spawn time.
-- A browser attach demo that shares one live session with xterm.js, read-only
-  until a person takes over.
-- A per-turn capsule from `registry.capsule()`: a short line per session plus a
-  version that changes only when the summary changes, so a host can inject it
-  into a prompt without repeating itself.
-- A per-write audit record from `session.audit()`, with secret input redacted.
-- A wait engine with literal matches, quiet time, phase settling, and timeout,
-  evaluated in a fixed priority order, plus Ctrl-C style interrupts and
-  bracketed paste.
-- Named keys including interrupt, EOF, suspend, arrows, paging, and common
-  Ctrl chords, plus resize and process-tree cleanup on close.
-- Twenty-nine tests covering the screen model, session lifecycle, shell
-  integration, lease, secrets, audit, capsule, and tools.
+- 🖥️ 每个会话一条真正的 PTY，从 `$SHELL`（或指定路径）启动，带
+  `TERM=xterm-256color`、工作目录和额外的环境变量。
+- 🧠 headless xterm 屏幕模型，支持备用屏幕、滚动回溯、软换行合并、光标与标题，
+  以及去掉 shell 画在光标之后、用暗色格子渲染的补全建议。
+- 🎯 同一份屏幕的两种投影：给模型的文本屏幕，和给浏览器 attach 流的序列化 ANSI。
+- 🚦 相位 `starting`、`running`、`waiting_input`、`idle`、`exited`。bash 和
+  zsh 都在加载完用户自己的启动配置之后，通过包装的 rcfile 装提示符标记；fish
+  和其他 shell 退回前台进程组加短暂静默窗口的判定。
+- ⏳ 等待引擎支持字面量命中、静默、相位稳定、超时和退出，按固定优先级判定；
+  另外支持 Ctrl-C 式中断和括号粘贴。
+- ⌨️ 具名按键覆盖中断、EOF、挂起、方向键、翻页和常用 Ctrl 组合，另外支持调整
+  尺寸和关闭时清理整棵进程树。
+- 🔒 单写者控制租约，支持人工接管与交回；密码提示检测会挂起智能体，并把等待
+  结算成 `human_required`；密钥在启动时注入。
+- 🧾 每次写入和控制权变更都会记入审计，凭据提示期间的人工输入会打码。
+- 🧩 `registry.capsule()` 提供每轮注入用的会话胶囊：每个会话一行，外加一个只在
+  摘要变化时才改变的版本号。
+- 🌐 一个浏览器接入演示，用 xterm.js 共享同一条活动会话，人工接管之前保持只读。
+- 🧪 二十九个测试，覆盖屏幕模型、会话生命周期、shell 集成、租约、密钥、审计、
+  胶囊和工具层。
 
-Not yet implemented: harness-side attach wiring (the demo shows the protocol),
-redaction spans beyond the audit preview, idle reclamation, wake-on-pattern
-jobs, fish integration, and Windows parity. See [ROADMAP.md](ROADMAP.md).
+## 🧩 八个工具
 
-## Design at a glance
+| 工具 | 作用 |
+| --- | --- |
+| `terminal_open` | 打开会话，返回 id、状态行和初始屏幕 |
+| `terminal_send` | 写入文本（默认回车提交），并等待结算 |
+| `terminal_wait` | 只等待，不写入 |
+| `terminal_snapshot` | 读取当前屏幕或输出尾部，可按版本号要增量 |
+| `terminal_key` | 按下具名按键，例如 `ctrl-c`、`enter`、`page-down` |
+| `terminal_resize` | 调整终端尺寸 |
+| `terminal_close` | 关闭会话并清理整棵进程树 |
+| `terminal_list` | 列出打开中的会话、相位、尺寸和目录 |
 
-The design is organised in five layers:
+## 🏗️ 设计分层
 
-1. **PTY primitives**: spawn, write, resize, signal, foreground process
-   inspection, process tree cleanup.
-2. **Session core**: one screen model per session, activity tracking, waiters,
-   control lease, redaction, audit.
-3. **Session service**: identity, publication, authorization, cleanup, and
-   change events.
-4. **Tool surface**: a small set of model-facing tools that write, wait, read
-   the screen, press keys, resize, and close.
-5. **Transport and UI**: an attach stream for a browser terminal, sharing the
-   same session record as the agent.
-
-Three invariants hold across the layers. There is one screen model and two
-projections, text for the agent and serialized ANSI for the browser. Writing is
-an action, waiting is a query, and state is a fact, kept separate so a long task
-can be observed without being written to. Authority is granted when a session is
-created rather than re-approved on every keystroke.
-
-The full design, including tool schemas, data structures, the lease protocol,
-and the list of sharp edges, is in [docs/design.zh.md](docs/design.zh.md). The
-document is written in Chinese; an English translation is welcome.
-
-## Repository layout
-
-```
-src/screen/model.ts    Headless xterm screen model and both projections
-src/pty/pty.ts         node-pty wrapper
-src/pty/proc.ts        Linux foreground group and stdin-wait inspection
-src/session/session.ts TerminalSession: write, wait, key, snapshot, resize, close
-src/session/registry.ts Session ids, limits, lookup, and cleanup
-src/session/shell.ts   $SHELL resolution and startup-file wrapper
-src/tools/index.ts     Eight model-facing tool definitions
-src/cli/demo.ts        Interactive demo over the tool surface
-test/                  Screen, session, and tool tests
-docs/design.zh.md      Full design document
-ROADMAP.md             Milestones, scope, and explicit non-goals
+```mermaid
+flowchart LR
+    agent["🤖 智能体"] --> tools["八个工具"]
+    human["🧑 人"] --> browser["浏览器 attach"]
+    tools --> session["会话：相位 / 等待 / 租约 / 审计"]
+    browser --> session
+    session --> pty["PTY 与 shell"]
+    session --> screen["屏幕模型"]
+    screen --> tools
+    screen --> browser
 ```
 
-## Status and roadmap
+整个设计分五层：
 
-M1 covers a single agent with a readable screen and waits that settle for the
-right reason. M2 adds the shared session, the lease, and password handoff. M3
-polishes shell fidelity and multi-session context. [ROADMAP.md](ROADMAP.md) lists
-every item and every deliberate non-goal.
+1. **PTY 原语**：启动、写入、调整尺寸、发信号、观测前台进程组、清理整棵进程树。
+2. **会话核心**：每个会话一份屏幕模型、活动观测、等待器、控制租约、打码与审计。
+3. **会话服务**：身份、发布、授权、清理，以及状态变更事件。
+4. **工具面**：一组面向模型的工具，负责写入、等待、读屏、按键、调整尺寸和关闭。
+5. **传输与界面**：浏览器终端通过 attach 流接入，和智能体共享同一条会话记录。
 
-## Related work
+三层之间有三条不变量。屏幕状态只有一份，两种投影：给智能体的是文本，给浏览器
+的是序列化后的 ANSI。写入是动作，等待是查询，状态是事实，三者分开，长任务才能
+只看不写。授权在创建会话时一次给定，而不是每次按键重新审批。
 
-The design was written against DeepSeek Harness and builds on primitives that
-already exist there: a node-pty based terminal spawner, an owner-scoped session
-registry, a shell backend with prompt markers, a headless xterm screen, a duplex
-attach stream, and a background job channel that can wake an idle agent. The
-proposal is to unify those pieces behind one session model rather than to
-replace them.
+完整设计，包括工具 schema、数据结构、租约协议和已知的尖角，在
+[docs/design.zh.md](docs/design.zh.md)。
 
-Prior art worth reading includes tmux and screen for session multiplexing,
-expect for scripted interaction, and the PTY and terminal emulation work in
-libvterm, xterm.js, and pyte.
+## 🗂️ 仓库结构
 
-## Contributing
+```text
+src/screen/model.ts      headless xterm 屏幕模型与两种投影
+src/pty/pty.ts           node-pty 包装
+src/pty/proc.ts          Linux 前台进程组与 stdin 等待观测
+src/session/session.ts   TerminalSession：写入、等待、按键、快照、租约、审计
+src/session/registry.ts  会话 id、并发上限、查找、清理与会话胶囊
+src/session/shell.ts     $SHELL 解析、bash 与 zsh 的启动文件包装
+src/tools/index.ts       八个面向模型的工具定义
+src/cli/demo.ts          走工具面的交互演示
+test/                    屏幕、会话、shell、租约、胶囊与工具测试
+docs/design.zh.md        完整设计文档
+ROADMAP.md               里程碑、范围与明确的非目标
+```
 
-Issues and design comments are welcome, especially from people who have built
-agent tooling or terminal multiplexers. If you want to implement a milestone,
-open an issue first so the scope stays aligned with the roadmap.
+## 🗺️ 状态与路线图
 
-## License
+M1 做单智能体的可读屏幕和判定准确的等待。M2 加共享会话、控制租约和密码交接。
+M3 打磨 shell 保真与多会话上下文。[ROADMAP.md](ROADMAP.md) 列出了每一项和每一个
+明确的非目标。
 
-MIT. See [LICENSE](LICENSE).
+尚未实现的部分：harness 侧的 attach 接线（演示已经展示了协议）、审计之外的打码
+区间、空闲会话回收、按模式唤醒空闲智能体的事件通道、fish 集成，以及 Windows
+和 macOS 的对齐。
+
+## 📚 相关工作
+
+设计是对着 DeepSeek Harness 写的，建立在它已有的原语上：基于 node-pty 的终端
+启动器、按所有者隔离的会话注册表、带提示符标记的 shell 后端、headless xterm
+屏幕、双工 attach 流，以及能唤醒空闲智能体的后台任务通道。方案是把这些拼成
+同一个会话模型，而不是推倒重来。
+
+值得一读的前作包括 tmux 与 screen 的会话复用、expect 的脚本化交互，以及
+libvterm、xterm.js、pyte 在终端仿真上的工作。
+
+## 🛠️ 参与
+
+欢迎提 issue 和设计意见，尤其是做过智能体工具或终端复用器的人。想实现某个
+里程碑的话，先开 issue 对一下范围，避免和路线图脱节。
+
+## 📄 许可证
+
+MIT，见 [LICENSE](LICENSE)。
+
+<p align="center">如果这个项目帮你省了点事，点个 ⭐ 就是最好的支持。</p>
+
+<p align="center">🌐 <a href="README.en.md">Read this in English</a></p>
