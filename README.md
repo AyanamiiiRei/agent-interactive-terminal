@@ -159,25 +159,30 @@ treat it as an example rather than a deployment.
   drawn after the cursor in dim cells.
 - Two projections from one screen: a text screen for the model and a serialized
   ANSI snapshot for the browser attach stream.
-- Phases `starting`, `running`, `waiting_input`, `idle`, and `exited`. Bash gets
-  prompt markers installed by a wrapper rcfile; zsh and other shells fall back to
-  foreground-process inspection plus a short quiet window.
+- Phases `starting`, `running`, `waiting_input`, `idle`, and `exited`. Bash and
+  zsh get prompt markers installed after their own startup files, through a
+  wrapper rcfile that preserves the user's configuration; fish and other shells
+  fall back to foreground-process inspection plus a short quiet window.
 - A single-writer lease with human takeover and handback, password-prompt
   detection that suspends the agent and settles waits with `human_required`, and
   secret injection at spawn time.
 - A browser attach demo that shares one live session with xterm.js, read-only
   until a person takes over.
+- A per-turn capsule from `registry.capsule()`: a short line per session plus a
+  version that changes only when the summary changes, so a host can inject it
+  into a prompt without repeating itself.
+- A per-write audit record from `session.audit()`, with secret input redacted.
 - A wait engine with literal matches, quiet time, phase settling, and timeout,
   evaluated in a fixed priority order, plus Ctrl-C style interrupts and
   bracketed paste.
 - Named keys including interrupt, EOF, suspend, arrows, paging, and common
   Ctrl chords, plus resize and process-tree cleanup on close.
-- Twenty-one tests covering the screen model, session lifecycle, lease, secrets,
-  and tools.
+- Twenty-nine tests covering the screen model, session lifecycle, shell
+  integration, lease, secrets, audit, capsule, and tools.
 
 Not yet implemented: harness-side attach wiring (the demo shows the protocol),
-the per-write audit record, redaction spans, wake-on-pattern jobs, native zsh
-prompt integration, and Windows parity. See [ROADMAP.md](ROADMAP.md).
+redaction spans beyond the audit preview, idle reclamation, wake-on-pattern
+jobs, fish integration, and Windows parity. See [ROADMAP.md](ROADMAP.md).
 
 ## Design at a glance
 

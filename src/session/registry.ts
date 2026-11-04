@@ -2,6 +2,7 @@
  * In-process registry of terminal sessions.
  * @module agent-interactive-terminal/registry
  */
+import { createHash } from 'node:crypto'
 import { SessionError } from '../errors.js'
 import type { OpenOptions } from '../types.js'
 import { TerminalSession, mintSessionId } from './session.js'
@@ -49,6 +50,18 @@ export class TerminalRegistry {
 
   list(): TerminalSession[] {
     return [...this.sessions.values()]
+  }
+
+  /**
+   * Two or three lines describing every open session, plus a version that
+   * changes only when the summary changes. Callers can inject the text into a
+   * system prompt when the version differs from the last one they sent.
+   */
+  capsule(): { text: string; version: string } {
+    const lines = this.list().map((session) => session.capsuleLine())
+    const text = lines.join('\n')
+    const version = createHash('sha1').update(text).digest('hex').slice(0, 12)
+    return { text, version }
   }
 
   async close(id: string): Promise<boolean> {

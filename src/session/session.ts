@@ -10,6 +10,7 @@ import { PtyProcess } from '../pty/pty.js'
 import { inspectForeground, signalGroup, type ForegroundInfo } from '../pty/proc.js'
 import { ScreenModel } from '../screen/model.js'
 import type {
+  AuditEntry,
   NamedKey,
   OpenOptions,
   SessionPhase,
@@ -120,6 +121,7 @@ export class TerminalSession {
   private exitResolve: (() => void) | undefined
   private readonly exitPromise: Promise<void>
 
+  private readonly auditLog: AuditEntry[] = []
   private lastViewLines: string[] = []
   private lastViewRevision = -1
   private readonly readyResolvers: Array<() => void> = []
@@ -176,6 +178,7 @@ export class TerminalSession {
   takeOver(): void {
     this.assertUsable()
     this.leaseState = { holder: 'human', since: Date.now(), reason: 'takeover', suspended: false }
+    this.recordAudit({ at: Date.now(), kind: 'lease', origin: 'human', bytes: 0, preview: '', detail: 'takeover' })
     this.notify()
   }
 
@@ -183,6 +186,7 @@ export class TerminalSession {
   handBack(): void {
     this.assertUsable()
     this.leaseState = { holder: 'agent', since: Date.now(), reason: 'handback', suspended: false }
+    this.recordAudit({ at: Date.now(), kind: 'lease', origin: 'human', bytes: 0, preview: '', detail: 'handback' })
     this.notify()
   }
 
@@ -194,11 +198,23 @@ export class TerminalSession {
   requireHuman(): void {
     this.assertUsable()
     this.leaseState = { holder: 'human', since: Date.now(), reason: 'secret-prompt', suspended: true }
+    this.recordAudit({
+      at: Date.now(),
+      kind: 'lease',
+      origin: 'system',
+      bytes: 0,
+      preview: '',
+      detail: 'secret prompt: control suspended',
+    })
     this.notify()
   }
 
   get pid(): number {
     return this.pty.pid
+  }
+
+  get cwd(): string {
+    return this.cwdValue
   }
 
   get revision(): number {
@@ -219,6 +235,7 @@ export class TerminalSession {
           ...process.env,
           TERM: 'xterm-256color',
           COLORTERM: 'truecolor',
+          ...this.launch.env,
           ...this.extraEnv,
         },
         cols: this.screen.cols,
@@ -298,6 +315,16 @@ export class TerminalSession {
       this.awaitingCommand = true
       this.promptReady = false
     }
+
+    const secret = origin === 'human' && this.leaseState.suspended
+    this.recordAudit({
+      at: Date.now(),
+      kind: 'write',
+      origin,
+      bytes: Buffer.byteLength(payload, 'utf8'),
+      preview: secret ? '' : previewOf(text),
+      ...(secret ? { detail: 'redacted: human input while suspended' } : {}),
+    })
 
     this.pty.write(payload)
     this.lastOutputAt = Date.now()
@@ -432,6 +459,23 @@ export class TerminalSession {
     // A reflow invalidates row indices, so the next snapshot must be full.
     this.lastViewRevision = -1
     this.notify()
+  }
+
+  /** Recorded writes and control changes, oldest first. */
+  audit(): readonly AuditEntry[] {
+    return this.auditLog.map((entry) => ({ ...entry }))
+  }
+
+  /** One line for a per-turn context capsule. */
+  capsuleLine(): string {
+    const name = this.name === undefined ? '' : ` "${this.name}"`
+    const alt = this.screen.alt ? ' alt' : ''
+    return `${this.id}${name} ${this.shellName} ${this.phaseValue} ${this.screen.cols}x${this.screen.rows}${alt} ${this.cwdValue}`
+  }
+
+  private recordAudit(entry: AuditEntry): void {
+    this.auditLog.push(entry)
+    if (this.auditLog.length > 200) this.auditLog.shift()
   }
 
   /** One stable status line, safe to show to a model. */
@@ -656,6 +700,11 @@ function diffRows(previous: readonly string[], next: readonly string[]): number[
     if ((previous[index] ?? '') !== (next[index] ?? '')) changed.push(index)
   }
   return changed
+}
+
+function previewOf(text: string): string {
+  const flat = text.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return flat.length > 80 ? `${flat.slice(0, 77)}...` : flat
 }
 
 function leadingBlankCount(lines: readonly string[]): number {

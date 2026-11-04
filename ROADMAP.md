@@ -28,8 +28,8 @@ session service from M2 or a wake channel from the harness.
 - [ ] Background watch that settles on a pattern and wakes an idle agent.
       (Needs the harness job wake channel; `terminal_wait` covers the polling
       case for now.)
-- [ ] Session limits and result caps are done; idle reclamation and the
-      per-write audit record are still open.
+- [x] Session limits, result caps, and a per-write audit record. Idle
+      reclamation is still open.
 
 ## M2: One terminal, two writers
 
@@ -56,9 +56,10 @@ and control changes hands deliberately.
 
 ## M3: Fidelity and context
 
-- [ ] zsh and fish shell integration, including ghost-text detection by cell
-      attributes.
-- [ ] Per-turn session capsule: two or three lines describing open sessions,
+- [x] zsh integration, including ghost-text detection by cell attributes. Bash
+      and zsh install markers through wrapper rcfiles; fish and other shells
+      still fall back to foreground inspection.
+- [x] Per-turn session capsule: two or three lines describing open sessions,
       injected only when state changes.
 - [ ] TUI fallback: cursor position and row diffs, with explicit guidance toward
       non-interactive alternatives.

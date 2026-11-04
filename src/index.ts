@@ -19,6 +19,7 @@ export {
   type ToolkitOptions,
 } from './tools/index.js'
 export type {
+  AuditEntry,
   Holder,
   NamedKey,
   OpenOptions,

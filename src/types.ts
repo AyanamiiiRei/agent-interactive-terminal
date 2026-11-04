@@ -73,6 +73,18 @@ export interface WaitResult {
   elapsedMs: number
 }
 
+/** One recorded write or control action, for audit. */
+export interface AuditEntry {
+  at: number
+  kind: 'write' | 'lease'
+  origin: WriteOrigin
+  bytes: number
+  /** Single-line preview with control characters removed; empty when redacted. */
+  preview: string
+  /** Why the entry exists, such as `takeover` or `redacted: secret prompt`. */
+  detail?: string
+}
+
 /** Options for opening a session. */
 export interface OpenOptions {
   /** Display name, unique within the registry when provided. */
