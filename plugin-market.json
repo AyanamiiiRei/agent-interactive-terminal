@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "title": {
+    "en": "Agent Interactive Terminal",
+    "zh": "Agent 交互式终端"
+  },
+  "description": {
+    "en": "Plugin index for agent-interactive-terminal, a stateful PTY terminal bundle for DeepSeek Harness.",
+    "zh": "agent-interactive-terminal 的插件索引：给 DeepSeek Harness 提供有状态 PTY 终端会话的 bundle。"
+  },
+  "metadata": {
+    "categories": {},
+    "labels": {},
+    "sortKeys": {}
+  },
+  "plugins": [
+    {
+      "name": "agent-interactive-terminal",
+      "title": {
+        "en": "Interactive Terminal",
+        "zh": "交互式终端"
+      },
+      "description": {
+        "en": "Persistent PTY sessions with screen snapshots, explicit wait outcomes, named keys, a human takeover lease, and password prompts that never reach the model.",
+        "zh": "持久 PTY 会话：屏幕快照、明确的等待结果、具名按键、人工接管租约，以及不会进入模型上下文的密码提示。"
+      },
+      "icon": "icon.svg",
+      "author": "Ribo Skubla",
+      "homepage": "https://github.com/AyanamiiiRei/agent-interactive-terminal",
+      "repository": {
+        "url": "https://github.com/AyanamiiiRei/agent-interactive-terminal"
+      },
+      "metadata": {
+        "keywords": [
+          "terminal",
+          "pty",
+          "agent",
+          "human-in-the-loop",
+          "tool-calling",
+          "xterm"
+        ],
+        "labels": [],
+        "sortKeys": {}
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1793830543,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/AyanamiiiRei/agent-interactive-terminal",
+            "commit": "19cab83a10f46a414f0e9371d464c8d9d7791537"
+          },
+          "engines": {}
+        }
+      ]
+    }
+  ]
+}
