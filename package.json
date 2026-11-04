@@ -37,7 +37,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.examples.json --noEmit",
     "demo": "tsx src/cli/demo.ts",
     "attach": "tsx examples/browser/server.ts",
-    "prepare": "tsc -p tsconfig.json"
+    "prepack": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.18.5",
