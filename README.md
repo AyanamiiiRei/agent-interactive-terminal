@@ -50,9 +50,10 @@ a rendered screen plus a status line, never a raw byte stream.
 
 ## Try it
 
-Requires Node.js 20 or newer, a C++ toolchain for `node-pty`, and Linux or
-macOS. The foreground-process inspection in this milestone is Linux-specific;
-elsewhere the session falls back to prompt markers and quiet time.
+Requires Node.js 20 or newer and a C++ toolchain for `node-pty`. Development
+and CI target Linux: the foreground-process inspection uses `/proc`, and macOS
+and Windows are not verified yet, so the session falls back to prompt markers
+and quiet time there.
 
 ```bash
 git clone https://github.com/AyanamiiiRei/agent-interactive-terminal.git

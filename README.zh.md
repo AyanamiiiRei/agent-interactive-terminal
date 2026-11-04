@@ -38,9 +38,9 @@ stdout 和 stderr。这个模型是无状态的、一次性的、基于管道的
 
 ## 试一下
 
-需要 Node.js 20 或更新版本、用于编译 `node-pty` 的 C++ 工具链，以及 Linux 或
-macOS。本里程碑里的前台进程观测只在 Linux 上生效，其他平台会退回提示符标记加
-静默窗口的判定方式。
+需要 Node.js 20 或更新版本，以及用于编译 `node-pty` 的 C++ 工具链。开发和 CI
+目前只针对 Linux：前台进程观测依赖 `/proc`，macOS 和 Windows 尚未验证，在其他
+平台上会话会退回提示符标记加静默窗口的判定方式。
 
 ```bash
 git clone https://github.com/AyanamiiiRei/agent-interactive-terminal.git
