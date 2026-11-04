@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Interactive Terminal",
+    "description": "Stateful PTY sessions with screen snapshots, explicit waits, named keys, a human takeover lease, and password prompts that never reach the model."
+  }
+}
