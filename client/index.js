@@ -116,6 +116,7 @@ window.__ModuleLoader__.load({
       ctx.effect(function () {
         return ctx.locale.register(NS, { en: en, zh: zh })
       })
+      var t = ctx.locale.bind(NS)
       ctx.slots.inject('plugins.row.config', function () {
         return ctx.slots.register(
           {
@@ -123,7 +124,7 @@ window.__ModuleLoader__.load({
             key: ROW_KEY,
             id: 'agent-interactive-terminal',
             locale: NS,
-            inject: function () { return {} },
+            inject: function () { return { t: t } },
           },
           Card,
         )
