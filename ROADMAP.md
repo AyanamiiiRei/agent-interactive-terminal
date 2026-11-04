@@ -37,12 +37,14 @@ The goal is the shared session: the human and the agent operate the same PTY,
 and control changes hands deliberately.
 
 - [ ] One global session registry instead of two isolated ones.
-- [ ] Browser attach to an agent-owned session, read-only until an explicit
-      takeover.
-- [ ] Single-writer lease with takeover, handback, and audit.
-- [ ] Password detection that suspends the agent, hands control to the human,
+- [x] Browser attach to an agent-owned session, read-only until an explicit
+      takeover. The standalone demo in `examples/browser` shows the protocol;
+      wiring it into a harness transport is still open.
+- [x] Single-writer lease with takeover and handback. The per-write audit
+      record is still open.
+- [x] Password detection that suspends the agent, hands control to the human,
       and settles the pending wait with a human-required outcome.
-- [ ] Secret injection at spawn time from a credential store, so the value never
+- [x] Secret injection at spawn time from a credential store, so the value never
       crosses the terminal.
 - [ ] Redaction spans for sensitive writes in the agent projection.
 - [x] Shell fidelity: follow the user's login shell and load its startup files,

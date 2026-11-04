@@ -97,6 +97,7 @@ export class TerminalSession {
   private readonly screen: ScreenModel
   private readonly extraEnv: Readonly<Record<string, string>>
   private readonly listeners = new Set<() => void>()
+  private readonly outputListeners = new Set<(data: string) => void>()
 
   private phaseValue: SessionPhase = 'starting'
   private leaseState: LeaseState
@@ -108,6 +109,7 @@ export class TerminalSession {
   private awaitingCommand = false
   private childSeen = false
   private bracketedPaste = false
+  private secretMuted = false
   private rawTail = ''
   private lastOutputAt = Date.now()
   private lastExitCode: number | null = null
@@ -144,7 +146,16 @@ export class TerminalSession {
   }
 
   static async open(init: SessionInit): Promise<TerminalSession> {
-    const session = new TerminalSession(init)
+    let resolved: SessionInit = init
+    if (init.secrets !== undefined) {
+      const { secrets, ...rest } = init
+      const env: Record<string, string> = { ...(init.env ?? {}) }
+      for (const [key, provide] of Object.entries(secrets)) {
+        env[key] = await provide()
+      }
+      resolved = { ...rest, env }
+    }
+    const session = new TerminalSession(resolved)
     await session.start()
     return session
   }
@@ -155,6 +166,34 @@ export class TerminalSession {
 
   get lease(): LeaseState {
     return { ...this.leaseState }
+  }
+
+  /**
+   * Hand the keyboard to a person. Agent writes fail with LEASE_DENIED and an
+   * agent wait settles with `human_took_over` until `handBack`.
+   */
+  takeOver(): void {
+    this.assertUsable()
+    this.leaseState = { holder: 'human', since: Date.now(), reason: 'takeover', suspended: false }
+    this.notify()
+  }
+
+  /** Return the keyboard to the agent. Only a person should call this. */
+  handBack(): void {
+    this.assertUsable()
+    this.leaseState = { holder: 'agent', since: Date.now(), reason: 'handback', suspended: false }
+    this.notify()
+  }
+
+  /**
+   * Suspend the agent because the next input is a secret only a person may
+   * provide. Password detection calls this automatically; a host can call it
+   * when it knows a prompt needs a human.
+   */
+  requireHuman(): void {
+    this.assertUsable()
+    this.leaseState = { holder: 'human', since: Date.now(), reason: 'secret-prompt', suspended: true }
+    this.notify()
   }
 
   get pid(): number {
@@ -201,7 +240,12 @@ export class TerminalSession {
       }
       this.lastOutputAt = Date.now()
       this.sawOutput = true
-      void this.screen.write(data).then(() => this.notify())
+      this.secretMuted = false
+      for (const listener of this.outputListeners) listener(data)
+      void this.screen.write(data).then(() => {
+        this.detectSecretPrompt()
+        this.notify()
+      })
     })
 
     this.pty.onExit(({ exitCode }) => {
@@ -256,6 +300,13 @@ export class TerminalSession {
 
     this.pty.write(payload)
     this.lastOutputAt = Date.now()
+    const submitting = submit || /[\r\n]/.test(text)
+    if (origin === 'human' && submitting && this.leaseState.suspended) {
+      // The person has supplied the secret; the agent may drive again, and the
+      // prompt still on screen must not re-suspend until new output arrives.
+      this.leaseState = { holder: 'agent', since: Date.now(), reason: 'handback', suspended: false }
+      this.secretMuted = true
+    }
     this.refreshPhase()
   }
 
@@ -288,7 +339,11 @@ export class TerminalSession {
 
     const evaluate = (): WaitOutcome | undefined => {
       if (this.phaseValue === 'exited') return 'exited'
+      // The screen may have been parsed before the async write callback ran, so
+      // look for a credential prompt here as well as in the data handler.
+      this.detectSecretPrompt()
       if (this.leaseState.suspended) return 'human_required'
+      if (this.leaseState.holder === 'human') return 'human_took_over'
       if (spec.match && spec.match.length > 0) {
         const text = this.screen.lines().join('\n')
         if (spec.match.some((pattern) => text.includes(pattern))) return 'matched'
@@ -403,6 +458,17 @@ export class TerminalSession {
     }
   }
 
+  /**
+   * Raw terminal output, for an attach stream that renders ANSI itself.
+   * Agent-facing projections never use this.
+   */
+  onOutput(listener: (data: string) => void): () => void {
+    this.outputListeners.add(listener)
+    return () => {
+      this.outputListeners.delete(listener)
+    }
+  }
+
   async close(): Promise<void> {
     if (this.closed) return
     this.closed = true
@@ -423,6 +489,11 @@ export class TerminalSession {
       this.promptReady = false
     } else if (kind === 'B') {
       this.childSeen = false
+      if (this.leaseState.suspended && this.leaseState.reason === 'secret-prompt') {
+        // A shell prompt proves no secret is pending: the match was a false
+        // positive, or the person already answered.
+        this.leaseState = { holder: 'agent', since: Date.now(), reason: 'handback', suspended: false }
+      }
       this.markPromptReady()
     } else if (kind === 'D') {
       const code = Number.parseInt(data.slice(2), 10)
@@ -544,6 +615,25 @@ export class TerminalSession {
         }
       }
     }, 0)
+  }
+
+  private static readonly SECRET_PROMPT = /(?:password|passphrase|passcode|enter pin)[^a-z0-9]*:?\s*$/i
+
+  /**
+   * A credential prompt at the end of the visible screen suspends the agent.
+   * Detection is deliberately narrow: the match must be on the last non-empty
+   * row of a session that is currently running a command, so a line printed
+   * and followed by a prompt does not trigger it.
+   */
+  private detectSecretPrompt(): void {
+    if (this.secretMuted || this.leaseState.suspended || this.phaseValue === 'exited') return
+    if (!this.awaitingCommand && !this.childSeen) return
+    const lines = this.screen.lines()
+    const last = lines[lines.length - 1]?.trim() ?? ''
+    if (last.length === 0 || last.length > 120) return
+    if (!TerminalSession.SECRET_PROMPT.test(last)) return
+    this.leaseState = { holder: 'human', since: Date.now(), reason: 'secret-prompt', suspended: true }
+    this.notify()
   }
 
   private assertUsable(): void {

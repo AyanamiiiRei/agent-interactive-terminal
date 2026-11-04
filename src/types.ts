@@ -89,6 +89,12 @@ export interface OpenOptions {
   rows?: number
   /** Kind of owner. Agent sessions are sandboxed in a deployment; here it is metadata. */
   kind?: 'agent' | 'user'
+  /**
+   * Secret values resolved at spawn time. Each provider is called once, and the
+   * resolved value goes into the environment without ever appearing in the
+   * status line or the transcript.
+   */
+  secrets?: Readonly<Record<string, () => string | Promise<string>>>
 }
 
 /** Named keys the session can deliver, mirroring what a person would press. */

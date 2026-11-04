@@ -2,10 +2,10 @@
 
 面向智能体、同时也能让人共用的有状态 PTY 终端会话。
 
-> **当前处于实现早期。** M1 的主体已经落地：真正的 PTY、headless 屏幕模型、
-> 相位与等待判定、八个面向模型的工具，以及测试。共享会话、控制租约和密码交接
-> 属于 [ROADMAP.md](ROADMAP.md) 里的 M2 里程碑。目标接口的参考仍然是
-> [docs/design.zh.md](docs/design.zh.md)。
+> **当前处于实现早期。** M1 已经落地，M2 的会话层也已完成：真正的 PTY、
+> headless 屏幕模型、相位与等待判定、八个面向模型的工具、单写者控制租约、
+> 密码挂起和密钥注入，都带测试。M2 还剩浏览器接入活动会话和每次写入的审计记录。
+> 目标接口的参考仍然是 [docs/design.zh.md](docs/design.zh.md)。
 
 ## 要解决的问题
 
@@ -48,6 +48,7 @@ cd agent-interactive-terminal
 npm install
 npm test
 npm run demo -- "git status"
+npm run attach        # 然后打开 http://127.0.0.1:7787/
 ```
 
 `npm run demo` 不带参数时会进入一个交互循环，走的是和模型完全相同的工具面：
@@ -94,6 +95,44 @@ const tools = toolIndex(createTerminalTools(registry))
 `terminal_snapshot`、`terminal_key`、`terminal_resize`、`terminal_close` 和
 `terminal_list`。
 
+### 人机协作
+
+租约决定键盘归谁。人可以随时接管；接管之后智能体的写入会得到 `LEASE_DENIED`，
+等待会得到 `human_took_over`，而且它不能自己抢回来：
+
+```ts
+session.takeOver()                     // 现在由人操作
+await session.write('ls', { origin: 'human' })
+session.handBack()                     // 人把控制权交回
+```
+
+出现凭据提示时，会话挂起智能体，把等待结算成 `human_required`，并一直持有租约，
+直到有人回答：
+
+```ts
+const asked = await session.wait({ timeoutMs: 30_000 })
+if (asked.outcome === 'human_required') {
+  // 把提示展示给人。永远不要让模型去要这个密码。
+  await session.write(secretFromHuman, { origin: 'human' })
+}
+```
+
+密钥可以在启动时注入，值不会经过终端：
+
+```ts
+const session = await sessions.open({
+  secrets: { GITHUB_TOKEN: () => readCredential('github') },
+})
+```
+
+### 浏览器接入
+
+`npm run attach` 会启动一个本地演示：用 xterm.js 和 WebSocket 把同一条会话渲染
+到浏览器里。页面默认只读，按下“Take over”之后键盘输入才会以
+`session.write(..., { origin: 'human' })` 送进终端；点“Hand back”把控制权交回
+智能体。演示服务只绑定 `127.0.0.1`，xterm.js 从 `node_modules` 提供，也没有任何
+鉴权，所以请把它当成示例而不是部署方案。
+
 ## 现在已经能用的部分
 
 - 每个会话一条真正的 PTY，从 `$SHELL`（或指定路径）启动，带
@@ -103,14 +142,17 @@ const tools = toolIndex(createTerminalTools(registry))
 - 同一份屏幕的两种投影：给模型的文本屏幕，和给浏览器 attach 流的序列化 ANSI。
 - 相位 `starting`、`running`、`waiting_input`、`idle`、`exited`。bash 通过包装
   的 rcfile 装提示符标记；zsh 和其他 shell 退回前台进程组加短暂静默窗口的判定。
+- 单写者控制租约，支持人工接管与交回；密码提示检测会挂起智能体，并把等待结算成
+  `human_required`；密钥在启动时注入。
+- 一个浏览器接入演示，用 xterm.js 共享同一条活动会话，人工接管之前保持只读。
 - 等待引擎支持字面量命中、静默、相位稳定和超时，按固定优先级判定；另外支持
   Ctrl-C 式中断和括号粘贴。
 - 具名按键覆盖中断、EOF、挂起、方向键、翻页和常用 Ctrl 组合，另外支持调整尺寸
   和关闭时清理整棵进程树。
-- 十七个测试，覆盖屏幕模型、会话生命周期和工具层。
+- 二十一个测试，覆盖屏幕模型、会话生命周期、租约、密钥和工具层。
 
-按设计尚未实现的部分：浏览器接入同一条活动会话、带接管的单写者租约、密码检测与
-人工交接、密钥注入、按模式唤醒的后台任务，以及 Windows 对齐。详见
+尚未实现的部分：harness 侧的 attach 接线（演示已经展示了协议）、每次写入的审计
+记录、打码区间、按模式唤醒的后台任务、原生 zsh 提示符集成，以及 Windows 对齐。详见
 [ROADMAP.md](ROADMAP.md)。
 
 ## 设计分层

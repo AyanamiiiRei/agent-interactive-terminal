@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Interactive Terminal</title>
+    <link rel="stylesheet" href="/xterm.css" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bar: #16181d;
+        --line: #2a2e37;
+        --text: #d5d8de;
+        --accent: #7aa2f7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0f1115;
+        color: var(--text);
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      #bar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 8px 12px;
+        background: var(--bar);
+        border-bottom: 1px solid var(--line);
+      }
+      #status {
+        flex: 1;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      #status b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      button {
+        padding: 4px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #1f2430;
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #hint {
+        color: #8b93a1;
+      }
+      #term {
+        flex: 1;
+        padding: 6px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <span id="status">connecting…</span>
+      <span id="hint"></span>
+      <button id="takeover" disabled>Take over</button>
+      <button id="handback" disabled>Hand back</button>
+    </div>
+    <div id="term"></div>
+    <script src="/xterm.js"></script>
+    <script src="/addon-fit.js"></script>
+    <script>
+      const term = new Terminal({
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: 13,
+        cursorBlink: true,
+        scrollback: 2000,
+        allowProposedApi: true,
+        theme: {
+          background: '#0f1115',
+          foreground: '#d5d8de',
+          cursor: '#7aa2f7',
+          selectionBackground: '#2f3b52',
+        },
+      })
+      const fit = new FitAddon.FitAddon()
+      term.loadAddon(fit)
+      term.open(document.getElementById('term'))
+      fit.fit()
+
+      const status = document.getElementById('status')
+      const hint = document.getElementById('hint')
+      const takeover = document.getElementById('takeover')
+      const handback = document.getElementById('handback')
+
+      let writable = false
+
+      const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/attach`)
+
+      socket.addEventListener('message', (event) => {
+        const message = JSON.parse(event.data)
+        if (message.type === 'hello') {
+          term.resize(message.cols, message.rows)
+          fit.fit()
+        } else if (message.type === 'snapshot') {
+          term.reset()
+          term.write(message.data)
+        } else if (message.type === 'output') {
+          term.write(message.data)
+        } else if (message.type === 'status') {
+          writable = message.writable
+          const lease = message.suspended ? 'human (secret prompt)' : message.lease
+          status.innerHTML = `phase <b>${message.phase}</b> · lease <b>${lease}</b> · rev ${message.revision}`
+          hint.textContent = writable ? '' : 'read-only until you take over'
+          takeover.disabled = message.lease !== 'agent'
+          handback.disabled = message.lease !== 'human'
+        } else if (message.type === 'denied') {
+          hint.textContent = message.reason
+        }
+      })
+
+      socket.addEventListener('close', () => {
+        status.textContent = 'disconnected'
+        hint.textContent = 'the demo server stopped'
+        writable = false
+      })
+
+      socket.addEventListener('open', () => {
+        sendResize()
+      })
+
+      term.onData((data) => {
+        if (!writable) {
+          hint.textContent = 'read-only until you take over'
+          return
+        }
+        socket.send(JSON.stringify({ type: 'write', data }))
+      })
+
+      function sendResize() {
+        if (socket.readyState !== WebSocket.OPEN) return
+        socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
+      }
+
+      let resizeTimer
+      window.addEventListener('resize', () => {
+        fit.fit()
+        clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(sendResize, 150)
+      })
+
+      takeover.addEventListener('click', () => socket.send(JSON.stringify({ type: 'takeover' })))
+      handback.addEventListener('click', () => socket.send(JSON.stringify({ type: 'handback' })))
+      term.focus()
+
+      window.addEventListener('beforeunload', () => socket.close())
+    </script>
+  </body>
+</html>

@@ -52,8 +52,8 @@ describe('TerminalSession', () => {
     expect(asked.view.text).toContain('Continue?')
     // A shell builtin blocks inside the shell process, so once output goes
     // quiet the session is treated as sitting at a prompt.
-    const quiet = await session.wait({ quietMs: 300, timeoutMs: 3000 })
-    expect(quiet.phase).toBe('idle')
+    const atPrompt = await session.wait({ settleOn: ['idle'], timeoutMs: 4000 })
+    expect(atPrompt.phase).toBe('idle')
     await session.write('y')
     const answered = await session.wait({ timeoutMs: 8000 })
     expect(answered.view.text).toContain('Continue?')
