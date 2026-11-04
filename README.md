@@ -49,11 +49,12 @@ https://raw.githubusercontent.com/AyanamiiiRei/agent-interactive-terminal/main/p
 填 Git 规格：
 
 ```bash
-git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#19cab83a10f46a414f0e9371d464c8d9d7791537
+git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#8302fd73e92374c11ddc2ad032990e1498ce7658
 ```
 
-插件市场本身是 DSH 的实验性 bundle，第一次启用需要重启 DSH；终端插件是普通的
-bundle 行，装好之后由 loader 加载。配置卡里改的 shell 只影响之后新开的会话，已经
+安装时会提示批准 `node-pty` 的构建脚本，同意之后才会编译出原生模块。插件市场
+本身是 DSH 的实验性 bundle，第一次启用需要重启 DSH；终端插件是普通的 bundle
+行，装好之后由 loader 加载。配置卡里改的 shell 只影响之后新开的会话，已经
 打开的会话保持原来的 shell。
 
 ## 🚀 快速开始

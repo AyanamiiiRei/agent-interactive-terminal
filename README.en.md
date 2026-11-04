@@ -57,11 +57,12 @@ Then search for `agent-interactive-terminal` and install it. You can also skip
 the market and paste the Git spec into Add plugin:
 
 ```bash
-git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#19cab83a10f46a414f0e9371d464c8d9d7791537
+git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#8302fd73e92374c11ddc2ad032990e1498ce7658
 ```
 
-The plugin market itself is an experimental DSH bundle and needs a DSH restart
-the first time it is enabled; the terminal plugin is an ordinary bundle row and
+The installer asks you to approve the `node-pty` build script, which compiles the
+native module. The plugin market itself is an experimental DSH bundle and needs a
+DSH restart the first time it is enabled; the terminal plugin is an ordinary bundle row and
 is loaded by the loader. Changing the shell in the configuration card affects
 only sessions opened afterwards; existing sessions keep their shell.
 
