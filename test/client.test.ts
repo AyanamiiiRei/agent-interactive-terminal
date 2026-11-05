@@ -234,7 +234,8 @@ describe('browser half', () => {
     })
     expect(tree.props.children.props['terminalId']).toBe('s-live')
     expect(tree.props.children.props['sessionId']).toBe('session-1')
-    expect((tree.props.children.props['labels'] as Record<string, string>)['locked']).toBe('state.locked')
+    expect((tree.props.children.props['labels'] as Record<string, string>)['observe']).toBe('state.observe')
+    expect((tree.props.children.props['labels'] as Record<string, string>)['sealed']).toBe('state.sealed')
   })
 
   it('terminates the bound session when the tab is closed', async () => {

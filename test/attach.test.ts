@@ -130,6 +130,43 @@ describe('attach stream', () => {
     await waitUntil(() => session.lease.holder === 'agent')
   }, 30_000)
 
+  it('applies access levels sent from the panel', async () => {
+    const host = await serve()
+    mounted.push(host)
+    const session = await host.registry.open({ shell: '/bin/bash', cwd: tmpdir(), cols: 80, rows: 24, name: 'ws-access' })
+    const messages: Array<Record<string, unknown>> = []
+    const socket = new WebSocket(`${host.url}?sessionId=session-1&id=${session.id}`)
+    sockets.push(socket)
+    socket.on('message', (data, isBinary) => {
+      if (!isBinary) messages.push(JSON.parse(String(data)) as Record<string, unknown>)
+    })
+    const lastStatus = () => [...messages].reverse().find((message) => message['type'] === 'status')
+
+    await waitUntil(() => lastStatus()?.['access'] === 'collaborate')
+
+    socket.send(JSON.stringify({ type: 'access', value: 'observe' }))
+    await waitUntil(() => session.agentAccess === 'observe' && lastStatus()?.['access'] === 'observe')
+    await expect(session.write('echo nope')).rejects.toMatchObject({ code: 'READ_ONLY' })
+    expect(session.snapshot().cols).toBe(80)
+
+    socket.send(JSON.stringify({ type: 'access', value: 'sealed' }))
+    await waitUntil(() => session.agentAccess === 'sealed' && lastStatus()?.['access'] === 'sealed')
+    let sealError: unknown
+    try {
+      session.snapshot()
+    } catch (error) {
+      sealError = error
+    }
+    expect((sealError as { code?: string }).code).toBe('SEALED')
+
+    // The person keeps full access, so their own typing still reaches the shell.
+    await session.write('echo human-in-sealed', { origin: 'human' })
+    await waitUntil(() => session.agentAccess === 'sealed')
+
+    socket.send(JSON.stringify({ type: 'access', value: 'collaborate' }))
+    await waitUntil(() => session.agentAccess === 'collaborate' && lastStatus()?.['access'] === 'collaborate')
+  }, 30_000)
+
   it('refuses an unknown session before upgrading', async () => {
     const host = await serve()
     mounted.push(host)

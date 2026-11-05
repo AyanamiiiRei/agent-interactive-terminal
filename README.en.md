@@ -80,17 +80,27 @@ header icon again focuses the tab already bound to the newest session instead
 of stacking a second view.
 
 The keyboard is not gated behind a button. Clicking into the terminal only moves
-focus; the lease follows an actual keystroke, and the banner switches to "You
-have control" at that moment. A few seconds after your last key (four by
-default) the lease goes back to the agent on its own, the banner returns to
-"Agent is driving", and the thin line under the bar shows how long is left. When
-you want to rule out accidental typing entirely, the lock button in the header
-drops every key while selection, copying, and scrolling keep working; the lock
-is remembered across reloads. A credential prompt turns the banner red and asks
-for your password, which never enters the model's context. The agent reads the
+focus; the lease follows an actual keystroke, and the badge turns green ("You
+have control") at that moment. A few seconds after your last key (four by
+default) the lease goes back to the agent on its own, the badge returns to a
+quiet "Ready"; when the agent actually writes a command the badge turns gold
+("Agent is driving") and a highlight sweeps the bar, and when it reads the
+screen with `terminal_snapshot` or `terminal_wait` the badge turns cyan
+("Watching") for a moment. The thin line under the bar shows how long is left.
+A credential prompt turns the badge red and asks for your password, which never
+enters the model's context. The agent reads the
 same screen with `terminal_snapshot`, and whatever the agent writes appears here
 immediately. A closed browser also returns the lease, so the agent is never
 locked out.
+
+Two more buttons in the header decide what the agent may do. The lock switches
+the session to read-only: the agent can still look, but writes fail with
+`READ_ONLY`. The plug seals it: the agent can neither look nor write, the
+terminal gets a red border and a strip you can click to reconnect, and an
+in-flight wait is aborted immediately; `terminal_list` keeps only a redacted
+entry with no name and no content. Both levels are enforced by the server, not
+by dropping keys in the browser, and you can always type because the terminal
+is yours.
 
 Keyboard input, clipboard, and resizing use the WebSocket attach stream.
 Selecting text copies it, Ctrl+Shift+V or a right click pastes with bracketed
@@ -211,6 +221,26 @@ const session = await sessions.open({
   secrets: { GITHUB_TOKEN: () => readCredential('github') },
 })
 ```
+
+### 🔐 Access levels
+
+The person owns the terminal; the agent is a guest. Reading and writing are two
+independent permissions the person can change while looking at the panel:
+
+| Level | Agent reads | Agent writes | When to use it |
+| --- | --- | --- | --- |
+| `collaborate` | yes | yes, arbitrated by the lease | the default, working together |
+| `observe` | yes | no | the person just took over and wants the agent to keep out |
+| `sealed` | no | no | fully cut the agent off, even from the contents |
+
+```ts
+session.setAgentAccess('observe')  // reads work, writes fail with READ_ONLY
+session.setAgentAccess('sealed')   // reads and writes fail with SEALED
+```
+
+Sealing aborts a wait that is already in progress, and later output never
+reaches the agent. What the agent has already read stays in its context; that
+is the honest limit of this model.
 
 ### 🌐 Browser attach
 

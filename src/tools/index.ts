@@ -122,7 +122,7 @@ export function createTerminalTools(
     {
       name: 'terminal_send',
       description:
-        'Write text to a terminal session and wait for it to settle. By default Enter is submitted. The call returns when a pattern matches, the program waits for input, the shell is idle, the screen goes quiet, or the timeout expires; check the wait outcome before assuming a command finished.',
+        'Write text to a terminal session and wait for it to settle. By default Enter is submitted. The call returns when a pattern matches, the program waits for input, the shell is idle, the screen goes quiet, or the timeout expires; check the wait outcome before assuming a command finished. When the person has made the session read-only or sealed it, the call fails with READ_ONLY or SEALED instead of writing.',
       parameters: {
         type: 'object',
         properties: {
@@ -162,7 +162,7 @@ export function createTerminalTools(
     {
       name: 'terminal_wait',
       description:
-        'Wait without writing. Use it to observe a long-running command, watch for a log line, or pick up after a human interaction. Returns the same view and status as terminal_send.',
+        'Wait without writing. Use it to observe a long-running command, watch for a log line, or pick up after a human interaction. Returns the same view and status as terminal_send. A session the person has sealed fails with SEALED.',
       parameters: {
         type: 'object',
         properties: {
@@ -190,7 +190,7 @@ export function createTerminalTools(
     {
       name: 'terminal_snapshot',
       description:
-        'Read the current screen or output tail without waiting. Pass the revision from the previous result to learn which rows changed.',
+        'Read the current screen or output tail without waiting. Pass the revision from the previous result to learn which rows changed. A session the person has sealed fails with SEALED.',
       parameters: {
         type: 'object',
         properties: {
@@ -275,7 +275,7 @@ export function createTerminalTools(
     },
     {
       name: 'terminal_resize',
-      description: 'Resize the terminal. Full-screen programs receive the new size immediately.',
+      description: 'Resize the terminal. Full-screen programs receive the new size immediately. Read-only and sealed sessions refuse this.',
       parameters: {
         type: 'object',
         properties: {
@@ -296,7 +296,7 @@ export function createTerminalTools(
     },
     {
       name: 'terminal_close',
-      description: 'Close a session and wait for its process tree to stop.',
+      description: 'Close a session and wait for its process tree to stop. Read-only and sealed sessions refuse this; the person can still close them from the panel.',
       parameters: {
         type: 'object',
         properties: {
@@ -314,7 +314,7 @@ export function createTerminalTools(
     },
     {
       name: 'terminal_list',
-      description: 'List open sessions with their phase, size, directory, and name.',
+      description: 'List open sessions with their phase, size, directory, and name. Sessions the person sealed appear without any of those details.',
       parameters: { type: 'object', properties: {} },
       async execute() {
         const sessions = registry.list()

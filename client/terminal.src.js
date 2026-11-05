@@ -508,6 +508,8 @@ const PANEL_CSS = `
 .ait-icon:hover{background:color-mix(in srgb,var(--ait-fg) 10%,transparent);color:var(--ait-fg)}
 .ait-icon:active{transform:scale(.93)}
 .ait-icon[data-on="true"]{color:var(--ait-accent);background:color-mix(in srgb,var(--ait-accent) 16%,transparent)}
+.ait-icon[data-on="true"][data-kind="observe"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 15%,transparent)}
+.ait-icon[data-on="true"][data-kind="seal"]{color:#f0a1a1;background:color-mix(in srgb,#e05252 17%,transparent)}
 .ait-icon[data-flash="true"]{animation:ait-flash .45s ease}
 .ait-icon[data-tip]{position:relative}
 .ait-icon[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 7px);right:0;padding:4px 7px;border-radius:6px;font-size:10.5px;line-height:1.2;white-space:nowrap;color:var(--ait-fg);background:color-mix(in srgb,var(--ait-bg) 78%,var(--ait-fg) 22%);border:1px solid color-mix(in srgb,var(--ait-fg) 13%,transparent);box-shadow:0 6px 18px rgba(0,0,0,.32);opacity:0;transform:translateY(-2px);pointer-events:none;transition:opacity .12s ease,transform .12s ease;z-index:6}
@@ -1312,6 +1314,7 @@ export function TerminalView(props) {
             'data-tip': readOnly ? labels.unlock : labels.lock,
             'aria-label': readOnly ? labels.unlock : labels.lock,
             'data-on': readOnly ? 'true' : 'false',
+            'data-kind': 'observe',
             'data-flash': flash ? 'true' : 'false',
             onClick: () => {
               toggleObserve()
@@ -1329,6 +1332,7 @@ export function TerminalView(props) {
             'data-tip': sealed ? labels.unseal : labels.seal,
             'aria-label': sealed ? labels.unseal : labels.seal,
             'data-on': sealed ? 'true' : 'false',
+            'data-kind': 'seal',
             onClick: toggleSeal,
           },
           PlugIcon(sealed),

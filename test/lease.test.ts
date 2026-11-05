@@ -72,6 +72,32 @@ describe('control lease', () => {
   })
 })
 
+describe('access levels', () => {
+  it('blocks agent writes in observe and reads in sealed', async () => {
+    const session = await open()
+    session.setAgentAccess('observe')
+    await expect(session.write('echo blocked')).rejects.toMatchObject({ code: 'READ_ONLY' })
+    expect(session.snapshot().phase).toBeDefined()
+
+    session.setAgentAccess('sealed')
+    let error: unknown
+    try {
+      session.snapshot()
+    } catch (caught) {
+      error = caught
+    }
+    expect((error as { code?: string }).code).toBe('SEALED')
+  })
+
+  it('aborts a pending agent wait when the person seals the session', async () => {
+    const session = await open()
+    await session.write('sleep 5')
+    const pending = session.wait({ timeoutMs: 10_000 })
+    session.setAgentAccess('sealed')
+    await expect(pending).rejects.toMatchObject({ code: 'SEALED' })
+  })
+})
+
 describe('secret injection', () => {
   it('passes a resolved secret to the environment without exposing it', async () => {
     const session = await TerminalSession.open({
