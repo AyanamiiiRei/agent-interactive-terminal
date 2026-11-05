@@ -729,7 +729,8 @@ export function TerminalView(props) {
             showStatus(message)
             setStatus((current) => Object.assign({}, current, { phase: 'exited' }))
             writableRef.current = false
-            setNotice(labelsRef.current.exited)
+            const code = Number.isInteger(message.exitCode) ? message.exitCode : null
+            setNotice(labelsRef.current.exited + (code === null ? '' : ' · ' + code))
             exitTimer = window.setTimeout(() => {
               if (!disposed && onCloseRef.current) onCloseRef.current()
             }, 1200)

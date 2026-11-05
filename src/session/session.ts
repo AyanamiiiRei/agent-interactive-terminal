@@ -115,6 +115,7 @@ export class TerminalSession {
   private lastOutputAt = Date.now()
   private lastWriteAt = 0
   private lastExitCode: number | null = null
+  private lastExitSignal: number | null = null
   private pollTimer: NodeJS.Timeout | undefined
   private notifyScheduled = false
   private closed = false
@@ -226,6 +227,16 @@ export class TerminalSession {
     return this.lastExitCode
   }
 
+  /** The signal that ended the shell, when it was signalled. */
+  get exitSignal(): number | null {
+    return this.lastExitSignal
+  }
+
+  /** Whether a client asked for the close rather than the shell exiting. */
+  get closedByOwner(): boolean {
+    return this.closed
+  }
+
   get size(): { cols: number; rows: number } {
     return { cols: this.screen.cols, rows: this.screen.rows }
   }
@@ -271,8 +282,9 @@ export class TerminalSession {
       })
     })
 
-    this.pty.onExit(({ exitCode }) => {
+    this.pty.onExit(({ exitCode, signal }) => {
       this.lastExitCode = exitCode
+      this.lastExitSignal = typeof signal === 'number' ? signal : null
       this.phaseValue = 'exited'
       if (this.pollTimer) clearInterval(this.pollTimer)
       this.notify()

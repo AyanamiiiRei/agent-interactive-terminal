@@ -107,7 +107,10 @@ describe('attach stream', () => {
 
     await host.registry.close(session.id)
     await waitUntil(() => messages.some((message) => message['type'] === 'exited'))
-    expect(messages.find((message) => message['type'] === 'exited')?.['exitCode']).toBeGreaterThanOrEqual(0)
+    const exited = messages.find((message) => message['type'] === 'exited')
+    expect(exited?.['exitCode']).toBeGreaterThanOrEqual(0)
+    expect(exited?.['closedByOwner']).toBe(true)
+    expect(typeof exited?.['tail']).toBe('string')
   }, 30_000)
 
   it('refuses an unknown session before upgrading', async () => {

@@ -30,6 +30,7 @@ export function createAttachUpgrade(deps) {
     function attach(client, session) {
         let ready = false;
         let finished = false;
+        let tail = '';
         const pending = [];
         let statusTimer;
         let unsubscribeOutput;
@@ -72,7 +73,16 @@ export function createAttachUpgrade(deps) {
             if (finished)
                 return;
             finished = true;
-            send({ type: 'exited', phase: session.phase, exitCode: session.exitCode, cols: session.size.cols, rows: session.size.rows });
+            send({
+                type: 'exited',
+                phase: session.phase,
+                exitCode: session.exitCode,
+                signal: session.exitSignal,
+                closedByOwner: session.closedByOwner,
+                cols: session.size.cols,
+                rows: session.size.rows,
+                tail: tail.slice(-2048),
+            });
             cleanup();
             if (client.readyState === WebSocket.OPEN)
                 client.close();
@@ -81,6 +91,7 @@ export function createAttachUpgrade(deps) {
         // serialized is buffered and flushed after it, so no byte is lost or
         // rendered out of order.
         unsubscribeOutput = session.onOutput((data) => {
+            tail = (tail + data).slice(-4096);
             if (!ready) {
                 pending.push(data);
                 return;

@@ -52,6 +52,7 @@ export declare class TerminalSession {
     private lastOutputAt;
     private lastWriteAt;
     private lastExitCode;
+    private lastExitSignal;
     private pollTimer;
     private notifyScheduled;
     private closed;
@@ -83,6 +84,10 @@ export declare class TerminalSession {
     get revision(): number;
     /** Exit status of the shell, when it has exited. */
     get exitCode(): number | null;
+    /** The signal that ended the shell, when it was signalled. */
+    get exitSignal(): number | null;
+    /** Whether a client asked for the close rather than the shell exiting. */
+    get closedByOwner(): boolean;
     get size(): {
         cols: number;
         rows: number;

@@ -72,6 +72,7 @@ export class TerminalSession {
     lastOutputAt = Date.now();
     lastWriteAt = 0;
     lastExitCode = null;
+    lastExitSignal = null;
     pollTimer;
     notifyScheduled = false;
     closed = false;
@@ -168,6 +169,14 @@ export class TerminalSession {
     get exitCode() {
         return this.lastExitCode;
     }
+    /** The signal that ended the shell, when it was signalled. */
+    get exitSignal() {
+        return this.lastExitSignal;
+    }
+    /** Whether a client asked for the close rather than the shell exiting. */
+    get closedByOwner() {
+        return this.closed;
+    }
     get size() {
         return { cols: this.screen.cols, rows: this.screen.rows };
     }
@@ -209,8 +218,9 @@ export class TerminalSession {
                 this.notify();
             });
         });
-        this.pty.onExit(({ exitCode }) => {
+        this.pty.onExit(({ exitCode, signal }) => {
             this.lastExitCode = exitCode;
+            this.lastExitSignal = typeof signal === 'number' ? signal : null;
             this.phaseValue = 'exited';
             if (this.pollTimer)
                 clearInterval(this.pollTimer);

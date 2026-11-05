@@ -69,6 +69,7 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
   function attach(client: WebSocket, session: TerminalSession): void {
     let ready = false
     let finished = false
+    let tail = ''
     const pending: string[] = []
     let statusTimer: NodeJS.Timeout | undefined
     let unsubscribeOutput: (() => void) | undefined
@@ -107,7 +108,16 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
     const finish = (): void => {
       if (finished) return
       finished = true
-      send({ type: 'exited', phase: session.phase, exitCode: session.exitCode, cols: session.size.cols, rows: session.size.rows })
+      send({
+        type: 'exited',
+        phase: session.phase,
+        exitCode: session.exitCode,
+        signal: session.exitSignal,
+        closedByOwner: session.closedByOwner,
+        cols: session.size.cols,
+        rows: session.size.rows,
+        tail: tail.slice(-2048),
+      })
       cleanup()
       if (client.readyState === WebSocket.OPEN) client.close()
     }
@@ -116,6 +126,7 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
     // serialized is buffered and flushed after it, so no byte is lost or
     // rendered out of order.
     unsubscribeOutput = session.onOutput((data) => {
+      tail = (tail + data).slice(-4096)
       if (!ready) {
         pending.push(data)
         return
