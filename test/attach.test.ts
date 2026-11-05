@@ -113,6 +113,23 @@ describe('attach stream', () => {
     expect(typeof exited?.['tail']).toBe('string')
   }, 30_000)
 
+  it('returns the keyboard to the agent when the view disconnects', async () => {
+    const host = await serve()
+    mounted.push(host)
+    const session = await host.registry.open({ shell: '/bin/bash', cwd: tmpdir(), cols: 80, rows: 24 })
+    const socket = new WebSocket(`${host.url}?sessionId=session-1&id=${session.id}`)
+    sockets.push(socket)
+    const messages: Array<Record<string, unknown>> = []
+    socket.on('message', (data, isBinary) => {
+      if (!isBinary) messages.push(JSON.parse(String(data)) as Record<string, unknown>)
+    })
+    await waitUntil(() => messages.some((message) => message['type'] === 'hello'))
+    socket.send(JSON.stringify({ type: 'takeover' }))
+    await waitUntil(() => session.lease.holder === 'human')
+    socket.close()
+    await waitUntil(() => session.lease.holder === 'agent')
+  }, 30_000)
+
   it('refuses an unknown session before upgrading', async () => {
     const host = await serve()
     mounted.push(host)

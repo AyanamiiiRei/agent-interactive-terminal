@@ -5,9 +5,12 @@
  * chunk is loaded lazily by `client/index.js`, so xterm.js only arrives when a
  * terminal tab is actually opened.
  *
- * The panel is deliberately a terminal, not a chat box: there is no command
- * input, no send button and no key row. xterm.js owns the keyboard, and every
- * byte it emits goes straight into the PTY the agent drives.
+ * Interaction model: there is no takeover button. Typing is always allowed
+ * unless the person explicitly locked the keyboard, and the first keystroke
+ * takes the lease from the agent. A few seconds after the last keystroke the
+ * lease goes back to the agent automatically, which a thin countdown line
+ * communicates. Mouse clicks never change the lease, so selecting and copying
+ * output works in every state.
  */
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -70,7 +73,7 @@ const THEMES = {
     },
   },
   solarizedDark: {
-    label: 'Solarized Dark',
+    label: 'Solarized',
     theme: {
       background: '#002b36',
       foreground: '#839496',
@@ -257,6 +260,7 @@ const FONT_STACKS = [
 ]
 
 const STORAGE_KEY = 'ait:terminal-settings'
+const LOCK_PREFIX = 'ait:terminal-locked:'
 
 const DEFAULT_SETTINGS = {
   theme: 'dark',
@@ -273,6 +277,7 @@ const DEFAULT_SETTINGS = {
   bell: 'none',
   copyOnSelect: true,
   pasteOnRightClick: true,
+  idleHandback: 4,
   shortcuts: { ...DEFAULT_SHORTCUTS },
 }
 
@@ -282,6 +287,11 @@ const settingsListeners = new Set()
 /** Whether a palette is light enough to need dark-on-light chrome. */
 function isLightTheme(key) {
   return key === 'light' || key === 'solarizedLight'
+}
+
+/** The palette for one theme key, falling back to the default. */
+function paletteOf(key) {
+  return THEMES[key] !== undefined ? THEMES[key].theme : THEMES.dark.theme
 }
 
 /**
@@ -309,6 +319,7 @@ function normalizeSettings(raw) {
   if (candidate.bell === 'none' || candidate.bell === 'sound' || candidate.bell === 'visual') next.bell = candidate.bell
   if (typeof candidate.copyOnSelect === 'boolean') next.copyOnSelect = candidate.copyOnSelect
   if (typeof candidate.pasteOnRightClick === 'boolean') next.pasteOnRightClick = candidate.pasteOnRightClick
+  if (Number.isFinite(candidate.idleHandback)) next.idleHandback = Math.min(30, Math.max(1, Number(candidate.idleHandback)))
   if (candidate.shortcuts !== null && typeof candidate.shortcuts === 'object') {
     for (const action of Object.keys(DEFAULT_SHORTCUTS)) {
       const combo = candidate.shortcuts[action]
@@ -364,9 +375,28 @@ function resetSettings() {
   for (const listener of settingsListeners) listener(cachedSettings)
 }
 
+/** Whether the person locked the keyboard for this terminal. */
+function readLock(terminalId) {
+  try {
+    return window.localStorage.getItem(LOCK_PREFIX + terminalId) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Persist the lock state for this terminal. */
+function writeLock(terminalId, locked) {
+  try {
+    if (locked) window.localStorage.setItem(LOCK_PREFIX + terminalId, '1')
+    else window.localStorage.removeItem(LOCK_PREFIX + terminalId)
+  } catch {
+    // Nothing to persist.
+  }
+}
+
 /** The terminal palette with the optional custom cursor color applied. */
 function themeFor(settings) {
-  const base = THEMES[settings.theme] !== undefined ? THEMES[settings.theme].theme : THEMES.dark.theme
+  const base = paletteOf(settings.theme)
   const theme = { ...base }
   if (typeof settings.cursorColor === 'string' && /^#[0-9a-f]{6}$/i.test(settings.cursorColor)) {
     theme.cursor = settings.cursorColor
@@ -376,30 +406,14 @@ function themeFor(settings) {
 
 /** Panel chrome colors that follow the terminal palette. */
 function chromeFor(settings) {
-  const light = isLightTheme(settings.theme)
-  return light
-    ? {
-        bar: '#ececec',
-        border: '#d6d6d6',
-        chip: '#e0e0e0',
-        chipHover: '#d5d5d5',
-        text: '#2b2b2b',
-        muted: '#6b6b6b',
-        panel: '#f7f7f7',
-        field: '#ffffff',
-        fieldBorder: '#cfcfcf',
-      }
-    : {
-        bar: '#242424',
-        border: '#333333',
-        chip: '#333333',
-        chipHover: '#3d3d3d',
-        text: '#e6e6e6',
-        muted: '#9d9d9d',
-        panel: '#242424',
-        field: '#2c2c2c',
-        fieldBorder: '#3d3d3d',
-      }
+  const palette = paletteOf(settings.theme)
+  return {
+    light: isLightTheme(settings.theme),
+    accent: palette.blue,
+    text: palette.foreground,
+    muted: isLightTheme(settings.theme) ? '#6a6d73' : '#9a9da3',
+    surface: palette.background,
+  }
 }
 
 /**
@@ -461,71 +475,112 @@ function comboLabel(combo) {
   return head.concat(last).join('+')
 }
 
-/** The session name when it is a real name, otherwise null. */
-function humanName(name) {
-  if (typeof name !== 'string' || name.trim() === '') return null
-  if (/^s-[0-9a-f]{4,}/i.test(name)) return null
-  return name
+/** A short state label key for the status pill. */
+function uiState(status, locked) {
+  if (status.phase === 'exited') return 'exited'
+  if (status.suspended) return 'secret'
+  if (locked) return 'locked'
+  return status.holder === 'human' ? 'human' : 'agent'
 }
 
-/** A drawn gear, matching the terminal glyph's stroke weight. */
-function GearGlyph() {
-  return React.createElement(
-    'svg',
-    { width: 13, height: 13, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
-    React.createElement('circle', { cx: 8, cy: 8, r: 2.2, stroke: 'currentColor', strokeWidth: 1.5 }),
-    React.createElement('path', {
-      d: 'M8 1.6v1.5M8 12.9v1.5M1.6 8h1.5M12.9 8h1.5M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1',
-      stroke: 'currentColor',
-      strokeWidth: 1.5,
-      strokeLinecap: 'round',
-    }),
-  )
-}
-
-const PANEL_CSS = [
-  '.ait-terminal{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}',
-  '.ait-terminal-bar{display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--ait-bar);border-bottom:1px solid var(--ait-border);flex:none;font-size:12px;min-height:0;color:var(--ait-text)}',
-  '.ait-terminal-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%;font-size:12px;flex:0 1 auto}',
-  '.ait-banner{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;font-size:11px;line-height:17px;background:var(--ait-banner-bg);color:var(--ait-banner-fg);white-space:nowrap;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}',
-  '.ait-banner[data-state="agent"]{background:#3a3320;color:#f0e2b6}',
-  '.ait-banner[data-state="human"]{background:#1f3a5f;color:#cfe3ff}',
-  '.ait-banner[data-state="secret"]{background:#5a2b2b;color:#ffd6d6}',
-  '.ait-banner[data-state="exited"]{background:#3a2a2a;color:#e0b4b4}',
-  '.ait-terminal[data-light="true"] .ait-banner[data-state="agent"]{background:#f6e7bf;color:#57460f}',
-  '.ait-terminal[data-light="true"] .ait-banner[data-state="human"]{background:#d7e7fb;color:#123b66}',
-  '.ait-terminal[data-light="true"] .ait-banner[data-state="secret"]{background:#f8d7d7;color:#6d1b1b}',
-  '.ait-terminal[data-light="true"] .ait-banner[data-state="exited"]{background:#eccfcf;color:#5b2222}',
-  '.ait-terminal-actions{margin-left:auto;display:flex;gap:6px;align-items:center;flex:none}',
-  '.ait-chip{border:0;border-radius:6px;padding:3px 10px;font-size:11px;background:var(--ait-chip);color:var(--ait-text);cursor:pointer;white-space:nowrap}',
-  '.ait-chip:hover{background:var(--ait-chip-hover)}',
-  '.ait-chip[data-primary="true"]{background:#3a5f8a;color:#eaf2ff}',
-  '.ait-chip[data-primary="true"]:hover{background:#446e9e}',
-  '.ait-term-host{flex:1;min-height:0;padding:8px 10px 10px}',
-  '.ait-term-host .xterm{height:100%}',
-  '.ait-term-host .xterm-viewport{background:transparent!important;scrollbar-width:thin;scrollbar-color:#4a4a4a transparent}',
-  '.ait-term-host .xterm-viewport::-webkit-scrollbar{width:10px}',
-  '.ait-term-host .xterm-viewport::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:5px}',
-  '.ait-term-notice{padding:4px 10px;font-size:11px;color:#f0e2b6;background:#3a3320;flex:none}',
-  '.ait-term-error{padding:10px 12px;font-size:12px;color:#ff9a9a;flex:none}',
-  '.ait-settings-backdrop{position:absolute;inset:0;background:transparent;z-index:4}',
-  '.ait-settings{position:absolute;top:34px;right:8px;bottom:8px;width:min(360px,calc(100% - 16px));z-index:5;display:flex;flex-direction:column;background:var(--ait-panel);color:var(--ait-text);border:1px solid var(--ait-border);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.45);overflow:hidden;font-size:12px}',
-  '.ait-settings-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--ait-border);font-weight:600;font-size:12px}',
-  '.ait-settings-body{overflow:auto;padding:6px 12px 12px}',
-  '.ait-settings h4{margin:12px 0 6px;font-size:11px;font-weight:600;color:var(--ait-muted);text-transform:uppercase;letter-spacing:.04em}',
-  '.ait-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0}',
-  '.ait-row-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-  '.ait-field{height:26px;border-radius:6px;border:1px solid var(--ait-field-border);background:var(--ait-field);color:var(--ait-text);padding:0 8px;font-size:12px;max-width:170px;min-width:0}',
-  '.ait-field[type="number"]{width:76px;max-width:76px}',
-  '.ait-field[type="color"]{width:40px;max-width:40px;padding:2px}',
-  '.ait-check{width:16px;height:16px;accent-color:#3a5f8a}',
-  '.ait-settings-foot{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-top:1px solid var(--ait-border)}',
-  '.ait-shortcut{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 0}',
-  '.ait-shortcut-key{font-family:ui-monospace,monospace;font-size:11px;padding:2px 7px;border-radius:5px;background:var(--ait-chip);color:var(--ait-text);cursor:pointer;border:0}',
-  '.ait-shortcut-key[data-recording="true"]{outline:1px dashed #6a9bd8;color:#8ab4f8}',
-  '.ait-term-bell{animation:ait-bell 220ms ease-in-out 2}',
-  '@keyframes ait-bell{0%,100%{opacity:1}50%{opacity:.55}}',
-].join('')
+const PANEL_CSS = `
+.ait-terminal{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;font-family:"Cantarell","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ait-text);background:var(--ait-bg)}
+.ait-terminal *, .ait-terminal *::before, .ait-terminal *::after{box-sizing:border-box}
+.ait-terminal[data-light="true"] .ait-state[data-state="agent"]{color:#8a5a00;background:color-mix(in srgb,#c18401 16%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="secret"]{color:#b3261e;background:color-mix(in srgb,#d93025 13%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="exited"]{color:#8c4a4a;background:color-mix(in srgb,#a05050 11%,transparent)}
+.ait-terminal[data-light="true"] .ait-notice{color:#8a5a00;background:color-mix(in srgb,#c18401 10%,transparent)}
+.ait-terminal[data-light="true"] .ait-swatch{border-color:rgba(0,0,0,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.ait-terminal[data-light="true"] .ait-host{box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.ait-bar{display:flex;align-items:center;gap:8px;height:40px;padding:0 8px 0 11px;flex:none;background:linear-gradient(to bottom,color-mix(in srgb,var(--ait-bg) 91%,var(--ait-fg) 9%),color-mix(in srgb,var(--ait-bg) 87%,var(--ait-fg) 13%));border-bottom:1px solid color-mix(in srgb,var(--ait-fg) 13%,transparent);position:relative;z-index:2}
+.ait-glyph{display:grid;place-items:center;width:18px;height:18px;flex:none;color:var(--ait-accent);opacity:.85}
+.ait-name{font-size:11.5px;font-weight:600;letter-spacing:.01em;color:var(--ait-fg);opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32%;flex:0 1 auto}
+.ait-name:empty{display:none}
+.ait-state{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px 0 7px;border-radius:999px;font-size:10.5px;font-weight:500;letter-spacing:.01em;color:var(--ait-fg);background:color-mix(in srgb,var(--ait-fg) 8%,transparent);transition:background-color .25s ease,color .25s ease;flex:0 0 auto}
+.ait-state .dot{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 16%,transparent);transition:box-shadow .25s ease}
+.ait-state-text{animation:ait-fade-in .18s ease}
+.ait-state[data-state="agent"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 14%,transparent)}
+.ait-state[data-state="agent"] .dot{animation:ait-breathe 2.8s ease-in-out infinite}
+.ait-state[data-state="human"]{color:var(--ait-accent);background:color-mix(in srgb,var(--ait-accent) 15%,transparent)}
+.ait-state[data-state="secret"]{color:#ff9e9e;background:color-mix(in srgb,#ff7a7a 17%,transparent)}
+.ait-state[data-state="secret"] .dot{animation:ait-pulse 1.6s ease-in-out infinite}
+.ait-state[data-state="locked"]{color:var(--ait-muted);background:color-mix(in srgb,var(--ait-fg) 7%,transparent)}
+.ait-state[data-state="exited"]{color:#d99a9a;background:color-mix(in srgb,#d99a9a 12%,transparent)}
+.ait-actions{margin-left:auto;display:flex;align-items:center;gap:2px;flex:none}
+.ait-icon{width:28px;height:28px;display:grid;place-items:center;border:0;padding:0;border-radius:8px;background:transparent;color:var(--ait-muted);cursor:pointer;transition:background-color .15s ease,color .15s ease,transform .12s ease}
+.ait-icon:hover{background:color-mix(in srgb,var(--ait-fg) 10%,transparent);color:var(--ait-fg)}
+.ait-icon:active{transform:scale(.93)}
+.ait-icon[data-on="true"]{color:var(--ait-accent);background:color-mix(in srgb,var(--ait-accent) 16%,transparent)}
+.ait-icon[data-flash="true"]{animation:ait-flash .45s ease}
+.ait-idle{position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--ait-accent),color-mix(in srgb,var(--ait-accent) 35%,transparent));transform-origin:left;animation-name:ait-idle;animation-timing-function:linear;animation-fill-mode:forwards;opacity:.9}
+.ait-notice{padding:5px 12px;font-size:11px;color:#e8c07d;background:color-mix(in srgb,#e8c07d 9%,transparent);border-bottom:1px solid color-mix(in srgb,var(--ait-fg) 8%,transparent);flex:none;animation:ait-fade-in .16s ease}
+.ait-host{flex:1;min-height:0;margin:6px 8px 8px;padding:8px 10px 10px;border-radius:10px;border:1px solid color-mix(in srgb,var(--ait-fg) 9%,transparent);background:var(--ait-bg);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 1px 2px rgba(0,0,0,.16);overflow:hidden}
+.ait-host .xterm{height:100%}
+.ait-host:focus-within{border-color:color-mix(in srgb,var(--ait-accent) 38%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 0 0 3px color-mix(in srgb,var(--ait-accent) 10%,transparent)}
+.ait-host .xterm-viewport{background:transparent!important;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ait-fg) 22%,transparent) transparent}
+.ait-host .xterm-viewport::-webkit-scrollbar{width:10px}
+.ait-host .xterm-viewport::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ait-fg) 18%,transparent);border-radius:6px;border:2px solid transparent;background-clip:content-box}
+.ait-host .xterm-viewport::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--ait-fg) 28%,transparent);background-clip:content-box}
+.ait-term-bell{animation:ait-bell .22s ease-in-out 2}
+.ait-backdrop{position:absolute;inset:0;z-index:4;background:transparent}
+.ait-sheet{position:absolute;top:44px;right:8px;bottom:8px;width:min(344px,calc(100% - 16px));z-index:5;display:flex;flex-direction:column;overflow:hidden;border-radius:14px;background:color-mix(in srgb,var(--ait-bg) 86%,var(--ait-fg) 14%);border:1px solid color-mix(in srgb,var(--ait-fg) 16%,transparent);box-shadow:0 24px 64px -16px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.2);backdrop-filter:blur(20px);animation:ait-sheet-in .19s cubic-bezier(.2,.8,.2,1)}
+.ait-bar,.ait-sheet,.ait-sheet-foot,.ait-themes,.ait-row-label,.ait-group-label{user-select:none}
+.ait-sheet-head{display:flex;align-items:center;justify-content:space-between;padding:13px 14px 11px;flex:none;background:linear-gradient(to bottom,color-mix(in srgb,var(--ait-fg) 4%,transparent),transparent)}
+.ait-sheet-head .ait-sheet-title{letter-spacing:.02em}
+.ait-sheet-title{font-size:12.5px;font-weight:600;letter-spacing:.01em}
+.ait-sheet-body{flex:1;min-height:0;overflow:auto;padding:0 14px 12px;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ait-fg) 20%,transparent) transparent}
+.ait-sheet-body::-webkit-scrollbar{width:8px}
+.ait-sheet-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ait-fg) 16%,transparent);border-radius:4px}
+.ait-group{margin-top:10px}
+.ait-group-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ait-muted);margin:0 0 7px}
+.ait-card{border-radius:11px;background:color-mix(in srgb,var(--ait-fg) 5%,transparent);border:1px solid color-mix(in srgb,var(--ait-fg) 8%,transparent);overflow:hidden}
+.ait-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;padding:6px 11px}
+.ait-row + .ait-row{border-top:1px solid color-mix(in srgb,var(--ait-fg) 7%,transparent)}
+.ait-row-label{flex:1;min-width:0;font-size:12px;color:var(--ait-fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-row-hint{font-size:10.5px;color:var(--ait-muted);margin-top:1px}
+.ait-select,.ait-input{height:28px;min-width:0;border-radius:7px;border:1px solid color-mix(in srgb,var(--ait-fg) 16%,transparent);background:color-mix(in srgb,var(--ait-bg) 70%,var(--ait-fg) 12%);color:var(--ait-fg);padding:0 8px;font-size:11.5px;font-family:inherit;outline:none;transition:border-color .15s ease,box-shadow .15s ease}
+.ait-select:focus,.ait-input:focus{border-color:var(--ait-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--ait-accent) 22%,transparent)}
+.ait-select{max-width:172px;appearance:none;padding-right:24px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239a9da3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center;background-size:10px 6px}
+.ait-input[type="number"]{width:62px;text-align:right;font-variant-numeric:tabular-nums;appearance:textfield}
+.ait-input[type="number"]::-webkit-inner-spin-button,.ait-input[type="number"]::-webkit-outer-spin-button{appearance:none;margin:0}
+.ait-color{position:relative;display:inline-block;width:26px;height:26px;border-radius:7px;border:1px solid color-mix(in srgb,var(--ait-fg) 18%,transparent);overflow:hidden;cursor:pointer;padding:0}
+.ait-color span{position:absolute;inset:0;display:block;border-radius:6px}
+.ait-color input{position:absolute;inset:0;opacity:0;cursor:pointer;border:0;padding:0}
+.ait-switch{position:relative;width:32px;height:18px;flex:none;border:0;padding:0;border-radius:999px;background:color-mix(in srgb,var(--ait-fg) 20%,transparent);cursor:pointer;transition:background-color .18s ease}
+.ait-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .18s cubic-bezier(.2,.8,.2,1)}
+.ait-switch[data-on="true"]{background:var(--ait-accent)}
+.ait-switch[data-on="true"]::after{transform:translateX(14px)}
+.ait-segment{display:inline-flex;padding:2px;border-radius:8px;background:color-mix(in srgb,var(--ait-fg) 8%,transparent);gap:2px}
+.ait-segment button{border:0;background:transparent;color:var(--ait-muted);font:inherit;font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.ait-segment button[data-on="true"]{background:color-mix(in srgb,var(--ait-fg) 14%,transparent);color:var(--ait-fg);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.ait-stepper{display:inline-flex;align-items:center;gap:1px;height:28px;padding:2px;border-radius:8px;background:color-mix(in srgb,var(--ait-fg) 8%,transparent)}
+.ait-stepper button{width:24px;height:24px;border:0;padding:0;border-radius:6px;background:transparent;color:var(--ait-fg);font:inherit;font-size:13px;line-height:1;cursor:pointer;transition:background-color .15s ease}
+.ait-stepper button:hover{background:color-mix(in srgb,var(--ait-fg) 12%,transparent)}
+.ait-stepper-value{min-width:22px;text-align:center;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--ait-fg)}
+.ait-themes{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
+.ait-theme{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--ait-fg);font:inherit;font-size:11px;text-align:left;cursor:pointer;transition:background-color .15s ease,border-color .15s ease}
+.ait-theme:hover{background:color-mix(in srgb,var(--ait-fg) 7%,transparent)}
+.ait-theme[data-on="true"]{border-color:color-mix(in srgb,var(--ait-accent) 70%,transparent);background:color-mix(in srgb,var(--ait-accent) 10%,transparent)}
+.ait-swatch{width:26px;height:26px;flex:none;border-radius:7px;display:flex;flex-direction:column;gap:3px;padding:4px 5px;border:1px solid rgba(255,255,255,.14);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.ait-swatch-dots{display:flex;gap:2px}
+.ait-swatch-dots i{display:block;width:3px;height:3px;border-radius:50%}
+.ait-swatch-line{display:block;height:2px;border-radius:1px;opacity:.55}
+.ait-theme-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-key{font-family:ui-monospace,"JetBrains Mono",monospace;font-size:10.5px;font-weight:500;padding:4px 7px;border-radius:6px;border:1px solid color-mix(in srgb,var(--ait-fg) 14%,transparent);background:color-mix(in srgb,var(--ait-fg) 6%,transparent);box-shadow:0 1px 0 color-mix(in srgb,var(--ait-fg) 10%,transparent);color:var(--ait-fg);cursor:pointer;transition:border-color .15s ease,background-color .15s ease}
+.ait-key:hover{background:color-mix(in srgb,var(--ait-fg) 10%,transparent)}
+.ait-key[data-recording="true"]{border-color:var(--ait-accent);color:var(--ait-accent);animation:ait-pulse 1.2s ease-in-out infinite}
+.ait-sheet-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;flex:none;border-top:1px solid color-mix(in srgb,var(--ait-fg) 10%,transparent)}
+.ait-ghost{border:0;background:transparent;color:var(--ait-muted);font:inherit;font-size:11.5px;padding:6px 9px;border-radius:7px;cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.ait-ghost:hover{background:color-mix(in srgb,var(--ait-fg) 8%,transparent);color:var(--ait-fg)}
+.ait-saved{font-size:10.5px;color:var(--ait-muted)}
+@keyframes ait-idle{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@keyframes ait-sheet-in{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes ait-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes ait-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes ait-breathe{0%,100%{opacity:.55}50%{opacity:1}}
+@keyframes ait-flash{0%{background:color-mix(in srgb,var(--ait-accent) 35%,transparent)}100%{background:transparent}}
+@keyframes ait-bell{0%,100%{opacity:1}50%{opacity:.5}}
+`
 
 let cssInjected = false
 
@@ -537,13 +592,6 @@ function injectCss() {
   style.dataset.pluginCss = 'agent-interactive-terminal/terminal'
   style.textContent = xtermCss + PANEL_CSS
   document.head.appendChild(style)
-}
-
-/** Short human label for a lease state. */
-function bannerState(status) {
-  if (status.phase === 'exited') return 'exited'
-  if (status.suspended) return 'secret'
-  return status.holder === 'human' ? 'human' : 'agent'
 }
 
 /** A short beep for the bell, kept silent if audio is unavailable. */
@@ -569,9 +617,103 @@ function beep() {
   }
 }
 
+/** A small terminal glyph that anchors the bar. */
+function TerminalGlyph() {
+  return React.createElement(
+    'svg',
+    { width: 17, height: 17, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('path', {
+      d: 'M3.4 5.1l3.3 2.9-3.3 2.9M8.9 11h3.7',
+      stroke: 'currentColor',
+      strokeWidth: 1.6,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    }),
+  )
+}
+
+/** Two sliders: quieter and more legible than a gear at this size. */
+function SettingsIcon() {
+  return React.createElement(
+    'svg',
+    { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('path', {
+      d: 'M2.6 5h3.2M9.4 5h4M2.6 11h3.6M9.8 11h3.6',
+      stroke: 'currentColor',
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+    }),
+    React.createElement('circle', { cx: 7.4, cy: 5, r: 1.6, stroke: 'currentColor', strokeWidth: 1.5 }),
+    React.createElement('circle', { cx: 8.6, cy: 11, r: 1.6, stroke: 'currentColor', strokeWidth: 1.5 }),
+  )
+}
+
+/** A padlock; `open` draws the shackle lifted for the unlocked state. */
+function LockIcon(open) {
+  return React.createElement(
+    'svg',
+    { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('rect', { x: 3.3, y: 7, width: 9.4, height: 6.6, rx: 1.6, stroke: 'currentColor', strokeWidth: 1.5 }),
+    open
+      ? React.createElement('path', { d: 'M5.6 7V4.9a2.6 2.6 0 0 1 5 1', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' })
+      : React.createElement('path', { d: 'M5.4 7V5.1a2.6 2.6 0 0 1 5.2 0V7', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
+    React.createElement('circle', { cx: 8, cy: 10.2, r: 0.9, fill: 'currentColor' }),
+  )
+}
+
+/** A plus for a new terminal. */
+function PlusIcon() {
+  return React.createElement(
+    'svg',
+    { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('path', { d: 'M8 3.2v9.6M3.2 8h9.6', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
+  )
+}
+
+/** A close glyph for the settings sheet. */
+function CloseIcon() {
+  return React.createElement(
+    'svg',
+    { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('path', { d: 'M4 4l8 8M12 4l-8 8', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
+  )
+}
+
+/** A switch, rendered as a button with the switch role. */
+function Switch(props) {
+  return React.createElement('button', {
+    type: 'button',
+    role: 'switch',
+    className: 'ait-switch',
+    'aria-checked': props.checked ? 'true' : 'false',
+    'data-on': props.checked ? 'true' : 'false',
+    onClick: () => props.onChange(!props.checked),
+  })
+}
+
+/** A segmented control: a small set of mutually exclusive options. */
+function Segmented(props) {
+  return React.createElement(
+    'span',
+    { className: 'ait-segment' },
+    props.options.map((option) =>
+      React.createElement(
+        'button',
+        {
+          key: option.value,
+          type: 'button',
+          'data-on': props.value === option.value ? 'true' : 'false',
+          onClick: () => props.onChange(option.value),
+        },
+        option.label,
+      ),
+    ),
+  )
+}
+
 /**
  * One terminal body: an xterm instance attached to one Host session over a
- * WebSocket stream, plus the Ptyxis-style settings sheet.
+ * WebSocket stream, plus the settings sheet and the idle-handback indicator.
  */
 export function TerminalView(props) {
   const { sessionId, terminalId, labels, onNewTab, onCloseTab } = props
@@ -584,6 +726,7 @@ export function TerminalView(props) {
   const onCloseRef = React.useRef(onCloseTab)
   const onNewRef = React.useRef(onNewTab)
   const settingsRef = React.useRef(null)
+  const lockedRef = React.useRef(readLock(terminalId))
   labelsRef.current = labels
   onCloseRef.current = onCloseTab
   onNewRef.current = onNewTab
@@ -599,14 +742,22 @@ export function TerminalView(props) {
   const [notice, setNotice] = React.useState(null)
   const [settings, setSettings] = React.useState(() => currentSettings())
   const [panelOpen, setPanelOpen] = React.useState(false)
+  const [locked, setLocked] = React.useState(lockedRef.current)
   const [zoom, setZoom] = React.useState(0)
+  const [inputEpoch, setInputEpoch] = React.useState(0)
+  const [flash, setFlash] = React.useState(false)
   settingsRef.current = settings
-  const reconnectRef = React.useRef(null)
+  lockedRef.current = locked
 
   React.useEffect(() => {
     injectCss()
     return subscribeSettings(setSettings)
   }, [])
+
+  const send = (message) => {
+    const socket = socketRef.current
+    if (socket !== null && socket.readyState === 1) socket.send(JSON.stringify(message))
+  }
 
   React.useEffect(() => {
     const host = hostRef.current
@@ -615,7 +766,7 @@ export function TerminalView(props) {
     let fitTimer = 0
     let exitTimer = 0
     let bellTimer = 0
-    let hintAt = 0
+    let lockHintAt = 0
     let exited = false
     const initial = settingsRef.current !== null ? settingsRef.current : currentSettings()
 
@@ -661,11 +812,6 @@ export function TerminalView(props) {
       }, 60)
     }
     fitNow()
-
-    const control = (message) => {
-      const socket = socketRef.current
-      if (socket !== null && socket.readyState === 1) socket.send(JSON.stringify(message))
-    }
 
     const showStatus = (message) => {
       const next = {
@@ -756,35 +902,32 @@ export function TerminalView(props) {
         // onclose carries the retry.
       }
     }
-    reconnectRef.current = () => {
-      connectAttempt = 0
-      exited = false
-      const socket = socketRef.current
-      if (socket !== null) {
-        try {
-          socket.close()
-        } catch {
-          // already closed
-        }
-      }
-      term.reset()
-      connect()
+
+    const showLockHint = () => {
+      const now = Date.now()
+      if (now - lockHintAt < 2500) return
+      lockHintAt = now
+      setNotice(labelsRef.current.lockHint)
+      window.setTimeout(() => setNotice(null), 1800)
     }
 
+    // A keystroke takes the keyboard, not a click. The local view becomes
+    // writable immediately; the server's lease confirmation arrives soon after
+    // and the write that follows is processed in order behind the takeover.
     term.onData((data) => {
-      if (!writableRef.current) {
-        const now = Date.now()
-        if (now - hintAt > 3000) {
-          hintAt = now
-          setNotice(labelsRef.current.takeoverHint)
-          window.setTimeout(() => setNotice(null), 1600)
-        }
+      if (lockedRef.current) {
+        showLockHint()
         return
       }
-      control({ type: 'write', data })
+      if (!writableRef.current) {
+        send({ type: 'takeover' })
+        writableRef.current = true
+      }
+      send({ type: 'write', data })
+      setInputEpoch((value) => value + 1)
     })
     term.onResize(({ cols, rows }) => {
-      control({ type: 'resize', cols, rows })
+      send({ type: 'resize', cols, rows })
     })
     term.onBell(() => {
       const bell = settingsRef.current !== null ? settingsRef.current.bell : 'none'
@@ -828,8 +971,6 @@ export function TerminalView(props) {
         if (onCloseRef.current) onCloseRef.current()
         return false
       }
-      // A US layout types Ctrl+Plus as Ctrl+Shift+Equal; treat it as the same
-      // gesture so the Ptyxis shortcut works without rebinding.
       if (combo === shortcuts.fontIncrease || (shortcuts.fontIncrease === 'ctrl+=' && combo === 'ctrl+shift+=')) {
         setZoom((value) => Math.min(15, value + 1))
         return false
@@ -881,7 +1022,7 @@ export function TerminalView(props) {
     // caret in the terminal instead of leaving focus on the tab strip.
     const focusTimer = window.setTimeout(() => {
       if (disposed) return
-      if (document.activeElement === document.body || document.activeElement === null) term.focus()
+      term.focus()
     }, 80)
 
     return () => {
@@ -895,7 +1036,6 @@ export function TerminalView(props) {
       window.removeEventListener('resize', fitSoon)
       host.removeEventListener('contextmenu', onContextMenu)
       host.removeEventListener('pointerdown', onPointerDown)
-      reconnectRef.current = null
       const socket = socketRef.current
       if (socket !== null) {
         try {
@@ -938,90 +1078,112 @@ export function TerminalView(props) {
     }
   }, [settings, zoom])
 
-  const state = bannerState(status)
+  // The person has the keyboard only while they keep typing. Every keystroke
+  // restarts this timer; when it fires the lease goes back to the agent and the
+  // countdown line disappears with the next status message.
+  React.useEffect(() => {
+    if (locked || status.phase === 'exited' || status.holder !== 'human' || status.suspended) return undefined
+    const ms = Math.max(1, settings.idleHandback) * 1000
+    const timer = window.setTimeout(() => {
+      send({ type: 'handback' })
+    }, ms)
+    return () => window.clearTimeout(timer)
+    // send is stable through the ref-backed socket.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.holder, status.suspended, status.phase, locked, settings.idleHandback, inputEpoch])
+
+  const focusTerminal = () => {
+    const term = termRef.current
+    if (term !== null) term.focus()
+  }
+
+  const toggleLock = () => {
+    const next = !locked
+    setLocked(next)
+    writeLock(terminalId, next)
+    if (next) send({ type: 'handback' })
+    // Clicking the lock must not leave the keyboard on the button: the next
+    // natural gesture is to type into the terminal again.
+    focusTerminal()
+  }
+
+  const closePanel = () => {
+    setPanelOpen(false)
+    focusTerminal()
+  }
+
+  const state = uiState(status, locked)
   const bannerText =
     state === 'exited'
       ? labels.exited
       : state === 'secret'
         ? labels.secret
-        : state === 'human'
-          ? labels.human
-          : labels.agent
+        : state === 'locked'
+          ? labels.locked
+          : state === 'human'
+            ? labels.human
+            : labels.agent
   const chrome = chromeFor(settings)
-  const light = isLightTheme(settings.theme)
+  const palette = paletteOf(settings.theme)
   const size = Math.min(28, Math.max(8, settings.fontSize + zoom))
-
-  const action =
-    status.phase === 'exited'
-      ? null
-      : status.holder === 'human'
-        ? React.createElement(
-            'button',
-            {
-              className: 'ait-chip',
-              type: 'button',
-              onClick: () => {
-                const socket = socketRef.current
-                if (socket !== null && socket.readyState === 1) socket.send(JSON.stringify({ type: 'handback' }))
-              },
-            },
-            labels.handback,
-          )
-        : React.createElement(
-            'button',
-            {
-              className: 'ait-chip',
-              'data-primary': 'true',
-              type: 'button',
-              onClick: () => {
-                const socket = socketRef.current
-                if (socket !== null && socket.readyState === 1) socket.send(JSON.stringify({ type: 'takeover' }))
-                if (termRef.current !== null) termRef.current.focus()
-              },
-            },
-            labels.takeover,
-          )
+  const countdownMs = Math.max(1, settings.idleHandback) * 1000
+  const showCountdown = !locked && !status.suspended && status.phase !== 'exited' && status.holder === 'human'
 
   const style = {
-    '--ait-bar': chrome.bar,
-    '--ait-border': chrome.border,
-    '--ait-chip': chrome.chip,
-    '--ait-chip-hover': chrome.chipHover,
+    '--ait-bg': palette.background,
+    '--ait-fg': palette.foreground,
     '--ait-text': chrome.text,
     '--ait-muted': chrome.muted,
-    '--ait-panel': chrome.panel,
-    '--ait-field': chrome.field,
-    '--ait-field-border': chrome.fieldBorder,
-    background: THEMES[settings.theme].theme.background,
-    color: THEMES[settings.theme].theme.foreground,
+    '--ait-accent': chrome.accent,
+    background: palette.background,
+    color: palette.foreground,
   }
 
   return React.createElement(
     'section',
-    { className: 'ait-terminal', 'data-light': light ? 'true' : 'false', style },
+    { className: 'ait-terminal', 'data-light': chrome.light ? 'true' : 'false', style },
     React.createElement(
       'header',
-      { className: 'ait-terminal-bar' },
-      React.createElement('span', { className: 'ait-terminal-name', title: status.name }, humanName(status.name) ?? '终端'),
-      React.createElement('span', { className: 'ait-banner', 'data-state': state }, bannerText),
+      { className: 'ait-bar' },
+      React.createElement('span', { className: 'ait-glyph' }, TerminalGlyph()),
+      React.createElement('span', { className: 'ait-name', title: status.name }, humanName(status.name) ?? ''),
+      React.createElement(
+        'span',
+        { className: 'ait-state', 'data-state': state },
+        React.createElement('span', { className: 'dot' }),
+        React.createElement('span', { className: 'ait-state-text', key: state }, bannerText),
+      ),
+      showCountdown
+        ? React.createElement('div', {
+            className: 'ait-idle',
+            key: inputEpoch,
+            style: { animationDuration: countdownMs + 'ms' },
+          })
+        : null,
       React.createElement(
         'div',
-        { className: 'ait-terminal-actions' },
+        { className: 'ait-actions' },
         React.createElement(
           'button',
           {
-            className: 'ait-chip',
+            className: 'ait-icon',
             type: 'button',
-            title: '终端设置',
-            'aria-label': '终端设置',
-            onClick: () => setPanelOpen((open) => !open),
+            title: locked ? labels.unlock : labels.lock,
+            'aria-label': locked ? labels.unlock : labels.lock,
+            'data-on': locked ? 'true' : 'false',
+            'data-flash': flash ? 'true' : 'false',
+            onClick: () => {
+              toggleLock()
+              setFlash(true)
+              window.setTimeout(() => setFlash(false), 500)
+            },
           },
-          React.createElement(GearGlyph, {}),
+          LockIcon(locked),
         ),
         React.createElement(
           'button',
           {
-            className: 'ait-chip',
+            className: 'ait-icon',
             type: 'button',
             title: labels.newTab,
             'aria-label': labels.newTab,
@@ -1029,31 +1191,48 @@ export function TerminalView(props) {
               if (onNewRef.current) onNewRef.current()
             },
           },
-          '+',
+          PlusIcon(),
         ),
-        action,
+        React.createElement(
+          'button',
+          {
+            className: 'ait-icon',
+            type: 'button',
+            title: labels.settings,
+            'aria-label': labels.settings,
+            onClick: () => setPanelOpen((open) => !open),
+          },
+          SettingsIcon(),
+        ),
       ),
     ),
-    notice === null ? null : React.createElement('div', { className: 'ait-term-notice' }, notice),
-    React.createElement('div', { className: 'ait-term-host', ref: hostRef }),
+    notice === null ? null : React.createElement('div', { className: 'ait-notice' }, notice),
+    React.createElement('div', { className: 'ait-host', ref: hostRef }),
     panelOpen
       ? React.createElement(
           React.Fragment,
           null,
           React.createElement('div', {
-            className: 'ait-settings-backdrop',
-            onClick: () => setPanelOpen(false),
+            className: 'ait-backdrop',
+            onClick: closePanel,
           }),
           React.createElement(TerminalSettings, {
             settings,
             onChange: (patch) => writeSettings({ ...settings, ...patch }),
             onReset: () => resetSettings(),
-            onClose: () => setPanelOpen(false),
+            onClose: closePanel,
             fontSize: size,
           }),
         )
       : null,
   )
+}
+
+/** The session name when it is a real name, otherwise null. */
+function humanName(name) {
+  if (typeof name !== 'string' || name.trim() === '') return null
+  if (/^s-[0-9a-f]{4,}/i.test(name)) return null
+  return name
 }
 
 /**
@@ -1072,7 +1251,8 @@ function TerminalSettings(props) {
   const set = (patch) => onChange(patch)
   const stack = FONT_STACKS.find((item) => item.value === settings.fontFamily) ?? FONT_STACKS[0]
   const shortcuts = settings.shortcuts
-  const themeCursor = THEMES[settings.theme]?.theme.cursor ?? '#ffffff'
+  const palette = paletteOf(settings.theme)
+  const themeCursor = palette.cursor ?? '#ffffff'
 
   const changeShortcut = (action, combo) => {
     if (combo === null) return
@@ -1082,230 +1262,351 @@ function TerminalSettings(props) {
 
   return React.createElement(
     'div',
-    { className: 'ait-settings', role: 'group', 'aria-label': '终端设置' },
+    { className: 'ait-sheet', role: 'group', 'aria-label': '终端设置' },
     React.createElement(
       'div',
-      { className: 'ait-settings-head' },
-      React.createElement('span', null, '终端设置'),
-      React.createElement('button', { className: 'ait-chip', type: 'button', onClick: onClose }, '关闭'),
+      { className: 'ait-sheet-head' },
+      React.createElement('span', { className: 'ait-sheet-title' }, '终端设置'),
+      React.createElement(
+        'button',
+        { className: 'ait-icon', type: 'button', title: '关闭', 'aria-label': '关闭', onClick: onClose },
+        CloseIcon(),
+      ),
     ),
     React.createElement(
       'div',
-      { className: 'ait-settings-body' },
-      React.createElement('h4', null, '外观'),
+      { className: 'ait-sheet-body' },
       React.createElement(
         'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '主题'),
-        React.createElement(
-          'select',
-          { className: 'ait-field', value: settings.theme, onChange: (event) => set({ theme: event.target.value }) },
-          Object.keys(THEMES).map((key) => React.createElement('option', { key, value: key }, THEMES[key].label)),
-        ),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '字体'),
-        React.createElement(
-          'select',
-          {
-            className: 'ait-field',
-            value: stack.id,
-            onChange: (event) => {
-              const next = FONT_STACKS.find((item) => item.id === event.target.value)
-              if (next !== undefined) set({ fontFamily: next.value })
-            },
-          },
-          FONT_STACKS.map((item) => React.createElement('option', { key: item.id, value: item.id }, item.label)),
-        ),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '字号'),
-        React.createElement('input', {
-          className: 'ait-field',
-          type: 'number',
-          min: 8,
-          max: 28,
-          value: settings.fontSize,
-          onChange: (event) => set({ fontSize: Number(event.target.value) }),
-        }),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '行高'),
-        React.createElement('input', {
-          className: 'ait-field',
-          type: 'number',
-          min: 0.9,
-          max: 2.2,
-          step: 0.05,
-          value: settings.lineHeight,
-          onChange: (event) => set({ lineHeight: Number(event.target.value) }),
-        }),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '字重'),
-        React.createElement(
-          'select',
-          { className: 'ait-field', value: settings.fontWeight, onChange: (event) => set({ fontWeight: Number(event.target.value) }) },
-          [
-            [300, '细体 300'],
-            [400, '常规 400'],
-            [500, '中等 500'],
-            [600, '半粗 600'],
-            [700, '粗体 700'],
-          ].map(([value, label]) => React.createElement('option', { key: value, value }, label)),
-        ),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '连字'),
-        React.createElement('input', {
-          className: 'ait-check',
-          type: 'checkbox',
-          checked: settings.ligatures,
-          onChange: (event) => set({ ligatures: event.target.checked }),
-        }),
-      ),
-      React.createElement('h4', null, '光标'),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '形状'),
-        React.createElement(
-          'select',
-          { className: 'ait-field', value: settings.cursorStyle, onChange: (event) => set({ cursorStyle: event.target.value }) },
-          React.createElement('option', { value: 'block' }, '方块'),
-          React.createElement('option', { value: 'bar' }, '竖线'),
-          React.createElement('option', { value: 'underline' }, '下划线'),
-        ),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '闪烁'),
-        React.createElement('input', {
-          className: 'ait-check',
-          type: 'checkbox',
-          checked: settings.cursorBlink,
-          onChange: (event) => set({ cursorBlink: event.target.checked }),
-        }),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '颜色'),
-        React.createElement(
-          'span',
-          { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
-          React.createElement('input', {
-            className: 'ait-field',
-            type: 'color',
-            value: /^#[0-9a-f]{6}$/i.test(settings.cursorColor) ? settings.cursorColor : themeCursor,
-            onChange: (event) => set({ cursorColor: event.target.value }),
-          }),
-          React.createElement(
-            'button',
-            { className: 'ait-chip', type: 'button', onClick: () => set({ cursorColor: '' }), title: '跟随主题' },
-            '主题色',
-          ),
-        ),
-      ),
-      React.createElement('h4', null, '滚动与提示'),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '回滚行数'),
-        React.createElement('input', {
-          className: 'ait-field',
-          type: 'number',
-          min: 500,
-          max: 200000,
-          step: 500,
-          value: settings.scrollback,
-          onChange: (event) => set({ scrollback: Number(event.target.value) }),
-        }),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '响铃'),
-        React.createElement(
-          'select',
-          { className: 'ait-field', value: settings.bell, onChange: (event) => set({ bell: event.target.value }) },
-          React.createElement('option', { value: 'none' }, '关闭'),
-          React.createElement('option', { value: 'visual' }, '视觉闪烁'),
-          React.createElement('option', { value: 'sound' }, '提示音'),
-        ),
-      ),
-      React.createElement('h4', null, '复制与粘贴'),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '选中即复制'),
-        React.createElement('input', {
-          className: 'ait-check',
-          type: 'checkbox',
-          checked: settings.copyOnSelect,
-          onChange: (event) => set({ copyOnSelect: event.target.checked }),
-        }),
-      ),
-      React.createElement(
-        'div',
-        { className: 'ait-row' },
-        React.createElement('span', { className: 'ait-row-label' }, '右键粘贴'),
-        React.createElement('input', {
-          className: 'ait-check',
-          type: 'checkbox',
-          checked: settings.pasteOnRightClick,
-          onChange: (event) => set({ pasteOnRightClick: event.target.checked }),
-        }),
-      ),
-      React.createElement('h4', null, '快捷键（点击后按下新的组合键）'),
-      Object.keys(SHORTCUT_LABELS).map((action) =>
+        { className: 'ait-group' },
+        React.createElement('p', { className: 'ait-group-label' }, '主题'),
         React.createElement(
           'div',
-          { className: 'ait-shortcut', key: action },
-          React.createElement('span', { className: 'ait-row-label' }, SHORTCUT_LABELS[action]),
+          { className: 'ait-card' },
           React.createElement(
-            'button',
-            {
-              ref: recording === action ? rowRef : undefined,
-              type: 'button',
-              className: 'ait-shortcut-key',
-              'data-recording': recording === action ? 'true' : 'false',
-              title: '点击后按下新的组合键',
-              onClick: () => setRecording(recording === action ? null : action),
-              onKeyDown: (event) => {
-                if (recording !== action) return
-                event.preventDefault()
-                event.stopPropagation()
-                if (event.key === 'Escape') {
-                  setRecording(null)
-                  return
-                }
-                changeShortcut(action, comboFromEvent(event))
+            'div',
+            { className: 'ait-themes' },
+            Object.keys(THEMES).map((key) =>
+              React.createElement(
+                'button',
+                {
+                  key,
+                  type: 'button',
+                  className: 'ait-theme',
+                  'data-on': settings.theme === key ? 'true' : 'false',
+                  onClick: () => set({ theme: key }),
+                },
+                React.createElement(
+                  'span',
+                  { className: 'ait-swatch', style: { background: THEMES[key].theme.background } },
+                  React.createElement(
+                    'span',
+                    { className: 'ait-swatch-dots' },
+                    React.createElement('i', { style: { background: THEMES[key].theme.red } }),
+                    React.createElement('i', { style: { background: THEMES[key].theme.yellow } }),
+                    React.createElement('i', { style: { background: THEMES[key].theme.green } }),
+                  ),
+                  React.createElement('span', {
+                    className: 'ait-swatch-line',
+                    style: { background: THEMES[key].theme.foreground, width: '14px' },
+                  }),
+                  React.createElement('span', {
+                    className: 'ait-swatch-line',
+                    style: { background: THEMES[key].theme.foreground, width: '9px' },
+                  }),
+                ),
+                React.createElement('span', { className: 'ait-theme-name' }, THEMES[key].label),
+              ),
+            ),
+          ),
+        ),
+      ),
+      React.createElement(
+        'div',
+        { className: 'ait-group' },
+        React.createElement('p', { className: 'ait-group-label' }, '字体'),
+        React.createElement(
+          'div',
+          { className: 'ait-card' },
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '字体'),
+            React.createElement(
+              'select',
+              {
+                className: 'ait-select',
+                value: stack.id,
+                onChange: (event) => {
+                  const next = FONT_STACKS.find((item) => item.id === event.target.value)
+                  if (next !== undefined) set({ fontFamily: next.value })
+                },
               },
-            },
-            recording === action ? '按下组合键…' : comboLabel(shortcuts[action]),
+              FONT_STACKS.map((item) => React.createElement('option', { key: item.id, value: item.id }, item.label)),
+            ),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '字号'),
+            React.createElement(
+              'span',
+              { className: 'ait-stepper' },
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  'aria-label': '减小字号',
+                  onClick: () => set({ fontSize: Math.max(8, settings.fontSize - 1) }),
+                },
+                '−',
+              ),
+              React.createElement('span', { className: 'ait-stepper-value' }, String(fontSize)),
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  'aria-label': '增大字号',
+                  onClick: () => set({ fontSize: Math.min(28, settings.fontSize + 1) }),
+                },
+                '+',
+              ),
+            ),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '行高'),
+            React.createElement('input', {
+              className: 'ait-input',
+              type: 'number',
+              min: 0.9,
+              max: 2.2,
+              step: 0.05,
+              value: settings.lineHeight,
+              onChange: (event) => set({ lineHeight: Number(event.target.value) }),
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '字重'),
+            React.createElement(
+              'select',
+              {
+                className: 'ait-select',
+                value: settings.fontWeight,
+                onChange: (event) => set({ fontWeight: Number(event.target.value) }),
+              },
+              [
+                [300, '细体 300'],
+                [400, '常规 400'],
+                [500, '中等 500'],
+                [600, '半粗 600'],
+                [700, '粗体 700'],
+              ].map(([value, label]) => React.createElement('option', { key: value, value }, label)),
+            ),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '连字'),
+            React.createElement(Switch, {
+              checked: settings.ligatures,
+              onChange: (checked) => set({ ligatures: checked }),
+            }),
+          ),
+        ),
+      ),
+      React.createElement(
+        'div',
+        { className: 'ait-group' },
+        React.createElement('p', { className: 'ait-group-label' }, '光标'),
+        React.createElement(
+          'div',
+          { className: 'ait-card' },
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '形状'),
+            React.createElement(Segmented, {
+              value: settings.cursorStyle,
+              options: [
+                { value: 'block', label: '方块' },
+                { value: 'bar', label: '竖线' },
+                { value: 'underline', label: '下划线' },
+              ],
+              onChange: (value) => set({ cursorStyle: value }),
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '闪烁'),
+            React.createElement(Switch, {
+              checked: settings.cursorBlink,
+              onChange: (checked) => set({ cursorBlink: checked }),
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '颜色'),
+            React.createElement(
+              'span',
+              { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
+              React.createElement(
+                'label',
+                { className: 'ait-color', title: '选择光标颜色' },
+                React.createElement('span', {
+                  style: {
+                    background: /^#[0-9a-f]{6}$/i.test(settings.cursorColor) ? settings.cursorColor : themeCursor,
+                  },
+                }),
+                React.createElement('input', {
+                  type: 'color',
+                  value: /^#[0-9a-f]{6}$/i.test(settings.cursorColor) ? settings.cursorColor : themeCursor,
+                  onChange: (event) => set({ cursorColor: event.target.value }),
+                }),
+              ),
+              React.createElement(
+                'button',
+                { className: 'ait-ghost', type: 'button', onClick: () => set({ cursorColor: '' }) },
+                '主题色',
+              ),
+            ),
+          ),
+        ),
+      ),
+      React.createElement(
+        'div',
+        { className: 'ait-group' },
+        React.createElement('p', { className: 'ait-group-label' }, '滚动与提示'),
+        React.createElement(
+          'div',
+          { className: 'ait-card' },
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '回滚行数'),
+            React.createElement('input', {
+              className: 'ait-input',
+              type: 'number',
+              min: 500,
+              max: 200000,
+              step: 500,
+              value: settings.scrollback,
+              onChange: (event) => set({ scrollback: Number(event.target.value) }),
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '响铃'),
+            React.createElement(Segmented, {
+              value: settings.bell,
+              options: [
+                { value: 'none', label: '关闭' },
+                { value: 'visual', label: '闪烁' },
+                { value: 'sound', label: '声音' },
+              ],
+              onChange: (value) => set({ bell: value }),
+            }),
+          ),
+        ),
+      ),
+      React.createElement(
+        'div',
+        { className: 'ait-group' },
+        React.createElement('p', { className: 'ait-group-label' }, '交互与剪贴板'),
+        React.createElement(
+          'div',
+          { className: 'ait-card' },
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement(
+              'span',
+              null,
+              React.createElement('div', { className: 'ait-row-label' }, '停止输入后交还'),
+              React.createElement('div', { className: 'ait-row-hint' }, '秒；打字期间由你控制'),
+            ),
+            React.createElement('input', {
+              className: 'ait-input',
+              type: 'number',
+              min: 1,
+              max: 30,
+              step: 1,
+              value: settings.idleHandback,
+              onChange: (event) => set({ idleHandback: Number(event.target.value) }),
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '选中即复制'),
+            React.createElement(Switch, {
+              checked: settings.copyOnSelect,
+              onChange: (checked) => set({ copyOnSelect: checked }),
+            }),
+          ),
+          React.createElement(
+            'div',
+            { className: 'ait-row' },
+            React.createElement('span', { className: 'ait-row-label' }, '右键粘贴'),
+            React.createElement(Switch, {
+              checked: settings.pasteOnRightClick,
+              onChange: (checked) => set({ pasteOnRightClick: checked }),
+            }),
+          ),
+        ),
+      ),
+      React.createElement(
+        'div',
+        { className: 'ait-group' },
+        React.createElement('p', { className: 'ait-group-label' }, '快捷键'),
+        React.createElement(
+          'div',
+          { className: 'ait-card' },
+          Object.keys(SHORTCUT_LABELS).map((action) =>
+            React.createElement(
+              'div',
+              { className: 'ait-row', key: action },
+              React.createElement('span', { className: 'ait-row-label' }, SHORTCUT_LABELS[action]),
+              React.createElement(
+                'button',
+                {
+                  ref: recording === action ? rowRef : undefined,
+                  type: 'button',
+                  className: 'ait-key',
+                  'data-recording': recording === action ? 'true' : 'false',
+                  title: '点击后按下新的组合键',
+                  onClick: () => setRecording(recording === action ? null : action),
+                  onKeyDown: (event) => {
+                    if (recording !== action) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    if (event.key === 'Escape') {
+                      setRecording(null)
+                      return
+                    }
+                    changeShortcut(action, comboFromEvent(event))
+                  },
+                },
+                recording === action ? '按下组合键…' : comboLabel(shortcuts[action]),
+              ),
+            ),
           ),
         ),
       ),
     ),
     React.createElement(
       'div',
-      { className: 'ait-settings-foot' },
+      { className: 'ait-sheet-foot' },
       React.createElement(
         'button',
         {
-          className: 'ait-chip',
+          className: 'ait-ghost',
           type: 'button',
           onClick: () => {
             onReset()
@@ -1314,11 +1615,7 @@ function TerminalSettings(props) {
         },
         '恢复默认',
       ),
-      React.createElement(
-        'span',
-        { style: { color: 'var(--ait-muted)', fontSize: '11px', alignSelf: 'center' } },
-        '当前字号 ' + fontSize + 'px',
-      ),
+      React.createElement('span', { className: 'ait-saved' }, '改动自动保存 · ' + fontSize + 'px'),
     ),
   )
 }

@@ -10,13 +10,13 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml"><img src="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node"></a>
-  <img src="https://img.shields.io/badge/tests-49%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-50%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
 > **Status.** M1 is in place, the M2 session layer (control lease, password
 > suspension, secret injection) has landed, and M3's shell fidelity and session
-> capsule are done. Forty-nine tests pass on Linux with Node 20 and Node 22.
+> capsule are done. Fifty tests pass on Linux with Node 20 and Node 22.
 > The repository also ships as a DSH bundle listed in a plugin market index.
 > Open items are tracked in [ROADMAP.md](ROADMAP.md).
 
@@ -79,12 +79,18 @@ shell exits on its own the tab closes itself after a moment. Clicking the
 header icon again focuses the tab already bound to the newest session instead
 of stacking a second view.
 
-A lease banner sits above the screen. While the agent holds control it reads
-"Agent is driving" and blocks keyboard input; press "Take control" to type, and
-"Hand back" to return it. A credential prompt turns the banner red and asks for
-your password, which never enters the model's context. The agent reads the same
-screen with `terminal_snapshot`, and whatever the agent writes appears here
-immediately.
+The keyboard is not gated behind a button. Clicking into the terminal only moves
+focus; the lease follows an actual keystroke, and the banner switches to "You
+have control" at that moment. A few seconds after your last key (four by
+default) the lease goes back to the agent on its own, the banner returns to
+"Agent is driving", and the thin line under the bar shows how long is left. When
+you want to rule out accidental typing entirely, the lock button in the header
+drops every key while selection, copying, and scrolling keep working; the lock
+is remembered across reloads. A credential prompt turns the banner red and asks
+for your password, which never enters the model's context. The agent reads the
+same screen with `terminal_snapshot`, and whatever the agent writes appears here
+immediately. A closed browser also returns the lease, so the agent is never
+locked out.
 
 Keyboard input, clipboard, and resizing use the WebSocket attach stream.
 Selecting text copies it, Ctrl+Shift+V or a right click pastes with bracketed
@@ -95,8 +101,9 @@ it, Ctrl+Shift+C/V copy and paste, and Ctrl+=, Ctrl+-, Ctrl+0 zoom the font.
 The gear button opens a settings sheet: seven themes (Dark, Light, Solarized
 Dark and Light, Dracula, One Dark, GNOME, Tango, each with a full 16-color ANSI
 palette), font family, size, line height, weight, ligatures, cursor shape and
-blink, scrollback, bell, copy-on-select, right-click paste, and a shortcut table
-where every binding can be recorded again. Changes apply immediately and persist
+blink, scrollback, bell, copy-on-select, right-click paste, the idle delay after
+which control returns to the agent, and a shortcut table where every binding can
+be recorded again. Changes apply immediately and persist
 in localStorage, with a restores-defaults button at the bottom. The sheet is an
 overlay inside the terminal, never a modal dialog.
 
@@ -241,7 +248,7 @@ treat it as an example rather than a deployment.
   stream, with themes, fonts, cursor, scrollback, bell, clipboard options, a
   rebindable shortcut table, and a lease banner that separates "Agent is
   driving" from "You have control".
-- 🧪 Forty-nine tests covering the screen model, session lifecycle, shell
+- 🧪 Fifty tests covering the screen model, session lifecycle, shell
   integration, lease, secrets, audit, capsule, tools, and the attach stream.
 
 ## 🧩 The eight tools

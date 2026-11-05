@@ -104,6 +104,16 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
       unsubscribeStatus?.()
       unsubscribeStatus = undefined
       cleanups.delete(cleanup)
+      // When the person's view goes away, the keyboard belongs to the agent
+      // again. Without this a closed browser would hold the lease forever and
+      // every agent write would be refused.
+      if (session.phase !== 'exited' && session.lease.holder === 'human') {
+        try {
+          session.handBack()
+        } catch {
+          // The session may have exited between the check and the call.
+        }
+      }
     }
     const finish = (): void => {
       if (finished) return

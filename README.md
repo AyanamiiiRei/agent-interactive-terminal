@@ -10,13 +10,13 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml"><img src="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node"></a>
-  <img src="https://img.shields.io/badge/tests-49%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-50%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
 > **状态**：M1 的主体、M2 的会话层（控制租约、密码挂起、密钥注入）、M3 的 shell
 > 保真和会话胶囊都已经落地，右侧边栏的 xterm 终端也已经接上同一条 attach 流，
-> 四十九个测试在 Linux 的 Node 20 和 Node 22 上通过。仓库同时以 DSH bundle 的形式
+> 五十个测试在 Linux 的 Node 20 和 Node 22 上通过。仓库同时以 DSH bundle 的形式
 > 发布，并进入了插件市场索引。还没做的条目在 [ROADMAP.md](ROADMAP.md)。
 
 ## ✨ 为什么需要它
@@ -66,11 +66,14 @@ WebSocket 路由在 Host 启动时注册，浏览器半边的 chunk 也在启动
 就终止整棵进程树；shell 自己退出时，标签页会在片刻之后自动关闭。重复点标题栏的
 图标会聚焦已经绑定到最新会话的标签页，不会叠出第二份视图。
 
-面板顶部是一条租约横幅。Agent 持有控制权时显示“Agent 正在操作”，键盘输入被拦下，
-点“接管输入”之后才能打字，交还时点“交还控制”。出现密码提示时横幅变红，显示
-“需要你输入密码”，你输入的内容不会进入模型的上下文。你敲的每条命令，agent 下一轮
-用 `terminal_snapshot` 看到的都是同一块屏幕；agent 写进去的东西，你也会立刻在面板
-里看到。
+键盘归谁不需要按钮来决定。鼠标点进终端只移动焦点，不会抢走 agent 的控制权；你
+真的敲下一个键，租约才转给你，横幅变成“你已接管”。你停手几秒（默认四秒）之后，
+租约自动回到 agent，横幅变回“Agent 正在操作”，顶栏下面那条细线会在你打字时收短，
+让你看见还剩多久。想彻底避免误触时，点右上角的锁形按钮把输入锁住：键盘被丢弃，
+但鼠标选中、复制输出和滚动照常，锁住的状态记在本地，刷新之后还在。密码提示会让
+横幅变红并显示“需要你输入密码”，你输入的内容不会进入模型上下文。你敲的每条命令，
+agent 下一轮用 `terminal_snapshot` 看到的都是同一块屏幕；agent 写进去的东西，你也
+会立刻在面板里看到。浏览器断开时租约也会自动交还，不会把 agent 锁在门外。
 
 键盘、复制粘贴和尺寸变化都走 WebSocket attach 流。选中文本即复制，Ctrl+Shift+V
 或右键粘贴走括号粘贴，窗口变化时自动 fit 并向 PTY 发 resize。快捷键沿用 Ptyxis
@@ -80,7 +83,7 @@ Ctrl+=、Ctrl+-、Ctrl+0 缩放字号。
 面板右上角的齿轮打开设置：七套主题（深色、浅色、Solarized 两种、Dracula、
 One Dark、GNOME、Tango，都带完整的 16 色 ANSI 调色板）、字体与字号、行高、字重、
 连字、光标形状与闪烁、回滚行数、响铃、选中即复制、右键粘贴，以及可以逐项改键的
-快捷键表。改动立即生效并保存在 localStorage，底部有“恢复默认”。设置面板嵌在
+快捷键表；交互一栏里还能改停止输入后自动交还的秒数。改动立即生效并保存在 localStorage，底部有“恢复默认”。设置面板嵌在
 终端里，不会弹模态框挡住内容。
 
 配置卡里新增了“默认执行方式”。“优先交互式终端”会给 agent 一段系统提示，让它
@@ -209,7 +212,7 @@ const session = await sessions.open({
 - 🌐 一个浏览器接入演示，用 xterm.js 共享同一条活动会话，人工接管之前保持只读。
 - 🖥️ 右侧边栏的真终端：xterm.js 加 WebSocket attach，有主题、字体、光标、回滚、
   响铃、复制粘贴和可改键的快捷键表，租约横幅区分“Agent 正在操作”和“你已接管”。
-- 🧪 四十九个测试，覆盖屏幕模型、会话生命周期、shell 集成、租约、密钥、审计、
+- 🧪 五十个测试，覆盖屏幕模型、会话生命周期、shell 集成、租约、密钥、审计、
   胶囊、工具层和 attach 流。
 
 ## 🧩 八个工具
