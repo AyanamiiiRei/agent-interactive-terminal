@@ -59,7 +59,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/AyanamiiiRei/agent-interactive-terminal",
-            "commit": "c5c1d16"
+            "commit": "c5c1d1620561aa897ed411090a64cc68f0ffacb1"
           },
           "engines": {}
         },
@@ -69,7 +69,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/AyanamiiiRei/agent-interactive-terminal",
-            "commit": "161e9a0"
+            "commit": "161e9a04cb156b0e53a73bec6595c1761a37802d"
           },
           "engines": {}
         }
