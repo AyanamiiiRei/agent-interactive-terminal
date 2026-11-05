@@ -1153,17 +1153,6 @@ export function TerminalView(props) {
     if (term !== null) term.focus()
   }
 
-  React.useEffect(() => {
-    if (!panelOpen) return undefined
-    const onKey = (event) => {
-      if (event.key !== 'Escape') return
-      setPanelOpen(false)
-      window.setTimeout(() => focusTerminal(), 0)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [panelOpen])
-
   const toggleLock = () => {
     const next = !locked
     setLocked(next)
@@ -1210,7 +1199,17 @@ export function TerminalView(props) {
 
   return React.createElement(
     'section',
-    { className: 'ait-terminal', 'data-light': chrome.light ? 'true' : 'false', style },
+    {
+      className: 'ait-terminal',
+      'data-light': chrome.light ? 'true' : 'false',
+      style,
+      onKeyDown: (event) => {
+        if (event.key !== 'Escape' || !panelOpen) return
+        event.preventDefault()
+        event.stopPropagation()
+        closePanel()
+      },
+    },
     React.createElement(
       'header',
       { className: 'ait-bar' },
