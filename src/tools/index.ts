@@ -306,8 +306,8 @@ export function createTerminalTools(
       },
       async execute(input) {
         const id = requiredString(input, 'sessionId')
-        const session = registry.require(id)
-        assertAgentCanWrite(session)
+        const session = registry.get(id)
+        if (session !== undefined) assertAgentCanWrite(session)
         const closed = await registry.close(id)
         return { text: closed ? `[closed: ${id}]` : `[already closed: ${id}]` }
       },
