@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto'
 import { SessionError } from '../errors.js'
 import type { OpenOptions } from '../types.js'
-import { TerminalSession, mintSessionId } from './session.js'
+import { TerminalSession } from './session.js'
 
 export interface RegistryOptions {
   /** Upper bound on concurrently open sessions. */
@@ -15,6 +15,8 @@ export interface RegistryOptions {
 export class TerminalRegistry {
   private readonly sessions = new Map<string, TerminalSession>()
   private readonly maxSessions: number
+  /** Short, human-readable ordinals instead of opaque session hashes. */
+  private nextOrdinal = 1
 
   constructor(options: RegistryOptions = {}) {
     this.maxSessions = options.maxSessions ?? 4
@@ -31,7 +33,7 @@ export class TerminalRegistry {
     if (options.name !== undefined && this.findByName(options.name)) {
       throw new SessionError(`a session named ${options.name} already exists`, 'SPAWN_FAILED')
     }
-    const id = mintSessionId()
+    const id = String(this.nextOrdinal++)
     const session = await TerminalSession.open({ ...options, id })
     this.sessions.set(id, session)
     return session

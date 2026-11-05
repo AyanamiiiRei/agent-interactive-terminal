@@ -4,10 +4,12 @@
  */
 import { createHash } from 'node:crypto';
 import { SessionError } from '../errors.js';
-import { TerminalSession, mintSessionId } from './session.js';
+import { TerminalSession } from './session.js';
 export class TerminalRegistry {
     sessions = new Map();
     maxSessions;
+    /** Short, human-readable ordinals instead of opaque session hashes. */
+    nextOrdinal = 1;
     constructor(options = {}) {
         this.maxSessions = options.maxSessions ?? 4;
     }
@@ -19,7 +21,7 @@ export class TerminalRegistry {
         if (options.name !== undefined && this.findByName(options.name)) {
             throw new SessionError(`a session named ${options.name} already exists`, 'SPAWN_FAILED');
         }
-        const id = mintSessionId();
+        const id = String(this.nextOrdinal++);
         const session = await TerminalSession.open({ ...options, id });
         this.sessions.set(id, session);
         return session;

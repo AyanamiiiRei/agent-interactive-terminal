@@ -87,7 +87,7 @@ describe('plugin entry', () => {
     try {
       const opened = await harness.call('terminal_open', { name: 'config-shell' })
       expect(opened).toContain('| bash |')
-      const id = /\[session: (s-[0-9a-f]+)\]/.exec(opened)?.[1]
+      const id = /\[session: (\d+)\]/.exec(opened)?.[1]
       expect(id).toBeTruthy()
       const echoed = await harness.call('terminal_send', {
         sessionId: id as string,
@@ -126,7 +126,7 @@ describe('plugin entry', () => {
     }
   })
 
-  it('adds terminal-first guidance only when the mode asks for it', () => {
+  it('always adds the terminal rules and the mode-specific guidance', () => {
     const sections: { name: string; order: number; text: string }[] = []
     const ctx = {
       tools: { register: () => () => {} },
@@ -155,6 +155,8 @@ describe('plugin entry', () => {
 
     sections.length = 0
     apply(ctx as never, { shell: 'auto', maxSessions: 1, mode: 'auto' })
-    expect(sections).toHaveLength(0)
+    expect(sections).toHaveLength(1)
+    expect(sections[0]?.text).toContain('Terminal rules')
+    expect(sections[0]?.text).toContain('never pkexec')
   })
 })

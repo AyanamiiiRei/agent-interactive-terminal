@@ -4,7 +4,6 @@
  *
  * @module agent-interactive-terminal/session
  */
-import { randomBytes } from 'node:crypto'
 import { SessionError } from '../errors.js'
 import { PtyProcess } from '../pty/pty.js'
 import { inspectForeground, signalGroup, type ForegroundInfo } from '../pty/proc.js'
@@ -114,6 +113,8 @@ export class TerminalSession {
   private rawTail = ''
   private lastOutputAt = Date.now()
   private lastWriteAt = 0
+  private agentCommandValue: string | undefined
+  private agentCommandAtValue = 0
   private lastExitCode: number | null = null
   private lastExitSignal: number | null = null
   private pollTimer: NodeJS.Timeout | undefined
@@ -237,6 +238,16 @@ export class TerminalSession {
     return this.closed
   }
 
+  /** The last command the agent submitted, for display in the panel chrome. */
+  get agentCommand(): string | undefined {
+    return this.agentCommandValue
+  }
+
+  /** When that command was submitted, in epoch milliseconds. */
+  get agentCommandAt(): number {
+    return this.agentCommandAtValue
+  }
+
   get size(): { cols: number; rows: number } {
     return { cols: this.screen.cols, rows: this.screen.rows }
   }
@@ -274,7 +285,9 @@ export class TerminalSession {
       }
       this.lastOutputAt = Date.now()
       this.sawOutput = true
-      this.secretMuted = false
+      // A bare newline is the echo of the submitted secret itself; only real
+      // output may re-arm credential-prompt detection.
+      if (/[^\x00-\x1f\x7f]/.test(data)) this.secretMuted = false
       for (const listener of this.outputListeners) listener(data)
       void this.screen.write(data).then(() => {
         this.detectSecretPrompt()
@@ -334,6 +347,12 @@ export class TerminalSession {
     }
 
     const secret = origin === 'human' && this.leaseState.suspended
+    const submitting = submit || /[\r\n]/.test(text)
+    const command = origin === 'agent' && submitting ? text.replace(/[\r\n]+/g, ' ').trim() : ''
+    if (command !== '') {
+      this.agentCommandValue = command
+      this.agentCommandAtValue = Date.now()
+    }
     this.recordAudit({
       at: Date.now(),
       kind: 'write',
@@ -346,7 +365,6 @@ export class TerminalSession {
     this.pty.write(payload)
     this.lastOutputAt = Date.now()
     this.lastWriteAt = Date.now()
-    const submitting = submit || /[\r\n]/.test(text)
     if (origin === 'human' && submitting && this.leaseState.suspended) {
       // The person has supplied the secret; the agent may drive again, and the
       // prompt still on screen must not re-suspend until new output arrives.
@@ -743,9 +761,4 @@ function clamp(value: number, min: number, max: number): number {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/** Mint a short, model-friendly session id. */
-export function mintSessionId(): string {
-  return `s-${randomBytes(3).toString('hex')}`
 }

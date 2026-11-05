@@ -520,6 +520,19 @@ const PANEL_CSS = `
 .ait-icon[data-tip]:hover::after,.ait-icon[data-tip]:focus-visible::after{opacity:1;transform:none}
 .ait-idle{position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--ait-accent),color-mix(in srgb,var(--ait-accent) 35%,transparent));transform-origin:left;animation-name:ait-idle;animation-timing-function:linear;animation-fill-mode:forwards;opacity:.9}
 .ait-notice{padding:5px 12px;font-size:11px;color:#e8c07d;background:color-mix(in srgb,#e8c07d 9%,transparent);border-bottom:1px solid color-mix(in srgb,var(--ait-fg) 8%,transparent);flex:none;animation:ait-fade-in .16s ease}
+.ait-cmd{display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:11px;line-height:1.45;color:color-mix(in srgb,var(--ait-accent) 72%,var(--ait-fg) 28%);background:color-mix(in srgb,var(--ait-accent) 7%,transparent);border-bottom:1px solid color-mix(in srgb,var(--ait-accent) 13%,transparent);flex:none;overflow:hidden}
+.ait-cmd-tag{flex:none;font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:1px 5px;border-radius:4px;background:color-mix(in srgb,var(--ait-accent) 18%,transparent);color:color-mix(in srgb,var(--ait-accent) 88%,var(--ait-fg) 12%)}
+.ait-cmd-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;opacity:.94}
+.ait-secret{display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px;border:0;border-bottom:1px solid color-mix(in srgb,#ffb86b 20%,transparent);background:color-mix(in srgb,#ffb86b 9%,transparent);color:#ffd6a3;font-size:11.5px;text-align:left;cursor:pointer;flex:none;animation:ait-fade-in .18s ease}
+.ait-secret:hover{background:color-mix(in srgb,#ffb86b 14%,transparent)}
+.ait-secret-dot{width:7px;height:7px;border-radius:50%;background:#ffb86b;box-shadow:0 0 0 0 color-mix(in srgb,#ffb86b 45%,transparent);animation:ait-pulse 1.8s ease-in-out infinite;flex:none}
+.ait-secret-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-terminal[data-light="true"] .ait-secret{color:#8a4b00;background:color-mix(in srgb,#c18401 9%,transparent);border-bottom-color:color-mix(in srgb,#c18401 20%,transparent)}
+.ait-terminal[data-light="true"] .ait-secret:hover{background:color-mix(in srgb,#c18401 14%,transparent)}
+.ait-terminal[data-agent="true"] .ait-bar::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,transparent 18%,color-mix(in srgb,var(--ait-accent) 26%,transparent) 44%,transparent 70%);background-size:220% 100%;animation:ait-sweep 1.5s linear infinite;z-index:0}
+.ait-terminal[data-agent="true"] .ait-bar>*{position:relative;z-index:1}
+.ait-terminal[data-agent="true"] .ait-host{border-color:color-mix(in srgb,var(--ait-accent) 32%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 0 0 1px color-mix(in srgb,var(--ait-accent) 9%,transparent),0 2px 12px color-mix(in srgb,var(--ait-accent) 10%,transparent)}
+@keyframes ait-sweep{from{background-position:130% 0}to{background-position:-130% 0}}
 .ait-stage{position:relative;flex:1;min-height:0;display:flex}
 .ait-host{flex:1;min-height:0;margin:6px 8px 8px;padding:8px 10px 10px;border-radius:10px;border:1px solid color-mix(in srgb,var(--ait-fg) 9%,transparent);background:var(--ait-bg);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 1px 2px rgba(0,0,0,.16);overflow:hidden}
 .ait-host .xterm{height:100%}
@@ -603,6 +616,8 @@ const PANEL_CSS = `
 @keyframes ait-bell{0%,100%{opacity:1}50%{opacity:.5}}
 @media (prefers-reduced-motion: reduce){
   .ait-state[data-state="agent"] .dot,.ait-state[data-state="secret"] .dot,.ait-state[data-state="connecting"] .dot{animation:none}
+  .ait-terminal[data-agent="true"] .ait-bar::after{animation:none;background:none}
+  .ait-secret-dot{animation:none}
   .ait-state-text,.ait-sheet,.ait-tab-body,.ait-toast,.ait-notice,.ait-icon{animation:none;transition:none}
   .ait-idle{animation:none!important;opacity:.3}
   .ait-spinner{animation:none;border-top-color:var(--ait-accent);opacity:.7}
@@ -780,7 +795,12 @@ export function TerminalView(props) {
     name: props.name || terminalId,
     cols: 0,
     rows: 0,
+    command: '',
+    commandAt: 0,
   })
+  const [agentPulse, setAgentPulse] = React.useState(false)
+  const pulseTimer = React.useRef(0)
+  const seenCommandAt = React.useRef(0)
   const [notice, setNotice] = React.useState(null)
   const [settings, setSettings] = React.useState(() => currentSettings())
   const [panelOpen, setPanelOpen] = React.useState(false)
@@ -858,6 +878,8 @@ export function TerminalView(props) {
     fitNow()
 
     const showStatus = (message) => {
+      const command = typeof message.command === 'string' ? message.command : ''
+      const commandAt = typeof message.commandAt === 'number' ? message.commandAt : 0
       const next = {
         phase: message.phase || 'running',
         holder: (message.lease && message.lease.holder) || 'agent',
@@ -865,9 +887,20 @@ export function TerminalView(props) {
         name: message.name || props.name || terminalId,
         cols: message.cols || 0,
         rows: message.rows || 0,
+        command,
+        commandAt,
       }
       setStatus(next)
       writableRef.current = next.holder === 'human'
+      if (commandAt > 0 && commandAt !== seenCommandAt.current) {
+        seenCommandAt.current = commandAt
+        setAgentPulse(true)
+        if (pulseTimer.current !== 0) window.clearTimeout(pulseTimer.current)
+        pulseTimer.current = window.setTimeout(() => {
+          pulseTimer.current = 0
+          setAgentPulse(false)
+        }, 2600)
+      }
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -1082,6 +1115,7 @@ export function TerminalView(props) {
       if (exitTimer !== 0) window.clearTimeout(exitTimer)
       if (bellTimer !== 0) window.clearTimeout(bellTimer)
       if (copyTimer !== 0) window.clearTimeout(copyTimer)
+      if (pulseTimer.current !== 0) window.clearTimeout(pulseTimer.current)
       observer.disconnect()
       window.removeEventListener('resize', fitSoon)
       host.removeEventListener('contextmenu', onContextMenu)
@@ -1202,6 +1236,7 @@ export function TerminalView(props) {
     {
       className: 'ait-terminal',
       'data-light': chrome.light ? 'true' : 'false',
+      'data-agent': agentPulse ? 'true' : 'false',
       style,
       onKeyDown: (event) => {
         if (event.key !== 'Escape' || !panelOpen) return
@@ -1274,6 +1309,22 @@ export function TerminalView(props) {
         ),
       ),
     ),
+    status.command !== '' && !locked && state === 'agent' && !status.suspended
+      ? React.createElement(
+          'div',
+          { className: 'ait-cmd', title: status.command },
+          React.createElement('span', { className: 'ait-cmd-tag' }, labels.agentTag),
+          React.createElement('code', { className: 'ait-cmd-text' }, status.command),
+        )
+      : null,
+    state === 'secret'
+      ? React.createElement(
+          'button',
+          { type: 'button', className: 'ait-secret', onClick: focusTerminal },
+          React.createElement('span', { className: 'ait-secret-dot' }),
+          React.createElement('span', { className: 'ait-secret-text' }, labels.secretHint),
+        )
+      : null,
     notice === null ? null : React.createElement('div', { className: 'ait-notice' }, notice),
     React.createElement(
       'div',
@@ -1320,6 +1371,7 @@ export function TerminalView(props) {
 function humanName(name) {
   if (typeof name !== 'string' || name.trim() === '') return null
   if (/^s-[0-9a-f]{4,}/i.test(name)) return null
+  if (/^\d+$/.test(name)) return null
   return name
 }
 

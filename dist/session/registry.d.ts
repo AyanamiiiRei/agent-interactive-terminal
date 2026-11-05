@@ -7,6 +7,8 @@ export interface RegistryOptions {
 export declare class TerminalRegistry {
     private readonly sessions;
     private readonly maxSessions;
+    /** Short, human-readable ordinals instead of opaque session hashes. */
+    private nextOrdinal;
     constructor(options?: RegistryOptions);
     /** Open a session and publish it under a fresh id. */
     open(options?: OpenOptions): Promise<TerminalSession>;

@@ -241,21 +241,29 @@ export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
     })
   })
 
-  if (config.mode !== 'auto') {
-    const guidance =
-      config.mode === 'terminal'
-        ? 'Prefer terminal_open and the other terminal_* tools when work is interactive, long-running, or benefits from shared state: REPLs, package managers, database clients, TUI programs, or anything that may prompt for input. Keep bash for short one-shot commands whose output you only need once. The user can open the same sessions in the right sidebar and type into them at any time, so treat the terminal as a shared workspace and close sessions you no longer need.'
-        : 'Prefer bash for shell work. Use terminal_open and the other terminal_* tools only when a program needs a persistent interactive session, prompts for input, or should be shared with the user in the right sidebar.'
-    ctx.inject<PromptHost>(['systemPrompt'], (host) => {
-      host.effect(() =>
-        host.systemPrompt.section({
-          name: 'agent-interactive-terminal',
-          order: host.systemPrompt.getSectionOrder('TOOL_PTY'),
-          text: guidance,
-        }),
-      )
-    })
-  }
+  const modeGuidance =
+    config.mode === 'terminal'
+      ? 'Prefer terminal_open and the other terminal_* tools when work is interactive, long-running, or benefits from shared state: REPLs, package managers, database clients, TUI programs, or anything that may prompt for input. Keep bash for short one-shot commands whose output you only need once.'
+      : config.mode === 'exec'
+        ? 'Prefer bash for shell work. Use terminal_open and the other terminal_* tools only when a program needs a persistent interactive session, prompts for input, or should be shared with the user in the right sidebar.'
+        : 'Use the interactive terminal when a program needs a persistent session, prompts for input, or the user should watch it; use bash for short one-shot commands whose output you only need once.'
+
+  ctx.inject<PromptHost>(['systemPrompt'], (host) => {
+    host.effect(() =>
+      host.systemPrompt.section({
+        name: 'agent-interactive-terminal',
+        order: host.systemPrompt.getSectionOrder('TOOL_PTY'),
+        text: [
+          modeGuidance,
+          'Terminal rules:',
+          '- The user can watch and type into every session in the right sidebar, so treat it as a shared workspace and close sessions you no longer need.',
+          '- Before each terminal_send or terminal_key that submits something, write one short sentence in the conversation saying what you are about to run; when a command asks Y or N, say which answer you are giving. Do not narrate every line of output.',
+          '- For privileges in an interactive terminal use sudo, never pkexec. When a password prompt is visible the terminal suspends your control so the user can type the password; do not try to type it yourself.',
+          '- Package-manager upgrades, builds and large downloads can take many minutes. Start them, then leave them alone and tell the user you will report back. Check at most once every five minutes, and never interrupt a slow or quiet command just because it is taking long.',
+        ].join('\n'),
+      }),
+    )
+  })
 
   ctx.effect(() => () => {
     for (const registry of registries) void registry.closeAll()

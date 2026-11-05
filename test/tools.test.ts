@@ -12,7 +12,7 @@ afterAll(async () => {
 describe('tools', () => {
   it('runs the open, send, snapshot, list, and close cycle', async () => {
     const open = await tools.get('terminal_open')!.execute({ name: 'tool-test', shell: '/bin/bash' })
-    const id = /\[session: (s-[0-9a-f]+)\]/.exec(open.text)?.[1]
+    const id = /\[session: (\d+)\]/.exec(open.text)?.[1]
     expect(id).toBeTruthy()
 
     const send = await tools

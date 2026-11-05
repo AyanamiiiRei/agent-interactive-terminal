@@ -51,6 +51,8 @@ export declare class TerminalSession {
     private rawTail;
     private lastOutputAt;
     private lastWriteAt;
+    private agentCommandValue;
+    private agentCommandAtValue;
     private lastExitCode;
     private lastExitSignal;
     private pollTimer;
@@ -88,6 +90,10 @@ export declare class TerminalSession {
     get exitSignal(): number | null;
     /** Whether a client asked for the close rather than the shell exiting. */
     get closedByOwner(): boolean;
+    /** The last command the agent submitted, for display in the panel chrome. */
+    get agentCommand(): string | undefined;
+    /** When that command was submitted, in epoch milliseconds. */
+    get agentCommandAt(): number;
     get size(): {
         cols: number;
         rows: number;
@@ -143,6 +149,4 @@ export declare class TerminalSession {
     private detectSecretPrompt;
     private assertUsable;
 }
-/** Mint a short, model-friendly session id. */
-export declare function mintSessionId(): string;
 //# sourceMappingURL=session.d.ts.map

@@ -47,6 +47,8 @@ window.__ModuleLoader__.load({
       'state.agent': 'Agent is driving',
       'state.human': 'You have control',
       'state.secret': 'Waiting for your password',
+      'state.secretHint': 'The terminal is waiting for your password. Click here, then type it in the terminal.',
+      'tag.agent': 'Agent',
       'state.exited': 'Process exited',
       'state.locked': 'Typing locked',
       'state.connecting': 'Connecting',
@@ -87,6 +89,8 @@ window.__ModuleLoader__.load({
       'state.agent': 'Agent 正在操作',
       'state.human': '你已接管',
       'state.secret': '需要你输入密码',
+      'state.secretHint': '终端正在等待你输入密码。点这里把光标放到终端，然后输入密码。',
+      'tag.agent': 'Agent',
       'state.exited': '进程已退出',
       'state.locked': '输入已锁定',
       'state.connecting': '正在连接',
@@ -293,7 +297,12 @@ window.__ModuleLoader__.load({
     function humanName(name) {
       if (typeof name !== 'string' || name.trim() === '') return null
       if (/^s-[0-9a-f]{4,}/i.test(name)) return null
+      if (/^\d+$/.test(name)) return null
       return name
+    }
+
+    function terminalLabel(t, id) {
+      return /^\d+$/.test(id) ? t('tab.title') + ' ' + id : t('tab.title')
     }
 
     function takeParams(tab, props) {
@@ -315,6 +324,8 @@ window.__ModuleLoader__.load({
         agent: t('state.agent'),
         human: t('state.human'),
         secret: t('state.secret'),
+        secretHint: t('state.secretHint'),
+        agentTag: t('tag.agent'),
         exited: t('state.exited'),
         locked: t('state.locked'),
         connecting: t('state.connecting'),
@@ -428,8 +439,11 @@ window.__ModuleLoader__.load({
       var params = takeParams(tab, props)
       var tabId = tab && tab.id ? tab.id : props.tabId
       var stored = tabId && props.dshSessionId ? readBinding(props.dshSessionId, tabId) : null
-      var name = humanName(params && params.name) || humanName(stored && stored.name) || t('tab.title')
-      return React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 } }, React.createElement(TerminalGlyph, {}), React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, name))
+      var id = (params && typeof params.id === 'string' && params.id) || (stored && stored.id) || ''
+      var name = humanName(params && params.name) || humanName(stored && stored.name)
+      var label = terminalLabel(t, id)
+      var title = name ? label + ' · ' + name : label
+      return React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 } }, React.createElement(TerminalGlyph, {}), React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, title))
     }
 
     function TerminalGlyph() {
@@ -498,6 +512,32 @@ window.__ModuleLoader__.load({
           })
         }).catch(function () {
           // No live agent for this view, or the bridge is not mounted.
+        })
+      }
+
+      var syncInFlight = false
+      function syncTerminals(sessionId) {
+        if (typeof sessionId !== 'string' || syncInFlight) return
+        syncInFlight = true
+        var api = apiFor(sessionId)
+        api.state().then(function (payload) {
+          var list = Array.isArray(payload.sessions) ? payload.sessions : []
+          for (var index = 0; index < list.length; index += 1) {
+            var item = list[index]
+            if (!item || typeof item.id !== 'string') continue
+            if (findOpenTab(sessionId, item.id) === null) {
+              try {
+                ctx.sidebarRight.openTab(TAB_KIND, { params: { id: item.id, name: item.name || '' } })
+              } catch {
+                // The pane is not mounted for this session yet; the next tick retries.
+              }
+            }
+          }
+          return undefined
+        }).catch(function () {
+          // No live agent for this view, or the bridge is not mounted.
+        }).then(function () {
+          syncInFlight = false
         })
       }
 
@@ -586,11 +626,20 @@ window.__ModuleLoader__.load({
                 return {
                   t: t,
                   openTerminal: function () { openRecentOrCreate(sessionId) },
+                  syncTerminals: function () { syncTerminals(sessionId) },
                 }
               },
             },
             function OpenTerminalButton(props) {
               var label = (props.t || t)('open')
+              React.useEffect(function () {
+                if (typeof props.syncTerminals !== 'function') return undefined
+                props.syncTerminals()
+                var timer = window.setInterval(props.syncTerminals, 4000)
+                return function () {
+                  window.clearInterval(timer)
+                }
+              }, [])
               return React.createElement(
                 'button',
                 {
