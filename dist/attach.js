@@ -52,6 +52,7 @@ export function createAttachUpgrade(deps) {
             revision: session.revision,
             command: session.agentCommand,
             commandAt: session.agentCommandAt,
+            peekAt: session.peekAt,
         });
         const broadcastStatus = () => {
             if (statusTimer !== undefined)

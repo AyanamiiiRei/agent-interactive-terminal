@@ -46,6 +46,8 @@ window.__ModuleLoader__.load({
       open: 'Open terminal',
       'state.agent': 'Agent is driving',
       'state.human': 'You have control',
+      'state.ready': 'Ready',
+      'state.peeking': 'Watching',
       'state.secret': 'Waiting for your password',
       'state.secretHint': 'The terminal is waiting for your password. Click here, then type it in the terminal.',
       'tag.agent': 'Agent',
@@ -88,6 +90,8 @@ window.__ModuleLoader__.load({
       open: '打开终端',
       'state.agent': 'Agent 正在操作',
       'state.human': '你已接管',
+      'state.ready': '可操作',
+      'state.peeking': '正在查看',
       'state.secret': '需要你输入密码',
       'state.secretHint': '终端正在等待你输入密码。点这里把光标放到终端，然后输入密码。',
       'tag.agent': 'Agent',
@@ -322,6 +326,8 @@ window.__ModuleLoader__.load({
     function labelsFor(t) {
       return {
         agent: t('state.agent'),
+        ready: t('state.ready'),
+        peeking: t('state.peeking'),
         human: t('state.human'),
         secret: t('state.secret'),
         secretHint: t('state.secretHint'),

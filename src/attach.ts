@@ -90,6 +90,7 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
       revision: session.revision,
       command: session.agentCommand,
       commandAt: session.agentCommandAt,
+      peekAt: session.peekAt,
     })
     const broadcastStatus = (): void => {
       if (statusTimer !== undefined) return

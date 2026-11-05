@@ -115,6 +115,7 @@ export class TerminalSession {
   private lastWriteAt = 0
   private agentCommandValue: string | undefined
   private agentCommandAtValue = 0
+  private peekAtValue = 0
   private lastExitCode: number | null = null
   private lastExitSignal: number | null = null
   private pollTimer: NodeJS.Timeout | undefined
@@ -246,6 +247,17 @@ export class TerminalSession {
   /** When that command was submitted, in epoch milliseconds. */
   get agentCommandAt(): number {
     return this.agentCommandAtValue
+  }
+
+  /** When the agent last looked at this session, in epoch milliseconds. */
+  get peekAt(): number {
+    return this.peekAtValue
+  }
+
+  /** Mark that the agent read the session, so the panel can show it looking. */
+  markPeek(): void {
+    this.peekAtValue = Date.now()
+    this.notify()
   }
 
   get size(): { cols: number; rows: number } {

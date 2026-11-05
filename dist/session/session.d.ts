@@ -53,6 +53,7 @@ export declare class TerminalSession {
     private lastWriteAt;
     private agentCommandValue;
     private agentCommandAtValue;
+    private peekAtValue;
     private lastExitCode;
     private lastExitSignal;
     private pollTimer;
@@ -94,6 +95,10 @@ export declare class TerminalSession {
     get agentCommand(): string | undefined;
     /** When that command was submitted, in epoch milliseconds. */
     get agentCommandAt(): number;
+    /** When the agent last looked at this session, in epoch milliseconds. */
+    get peekAt(): number;
+    /** Mark that the agent read the session, so the panel can show it looking. */
+    markPeek(): void;
     get size(): {
         cols: number;
         rows: number;

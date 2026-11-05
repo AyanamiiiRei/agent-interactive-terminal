@@ -476,18 +476,24 @@ function comboLabel(combo) {
 }
 
 /** A short state label key for the status pill. */
-function uiState(status, locked, painted) {
+function uiState(status, locked, painted, typing, peeking) {
   if (!painted) return 'connecting'
   if (status.phase === 'exited') return 'exited'
   if (status.suspended) return 'secret'
   if (locked) return 'locked'
-  return status.holder === 'human' ? 'human' : 'agent'
+  if (status.holder === 'human') return 'human'
+  if (typing) return 'typing'
+  if (peeking) return 'peeking'
+  return 'agent'
 }
 
 const PANEL_CSS = `
 .ait-terminal{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;font-family:"Cantarell","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ait-text);background:var(--ait-bg)}
 .ait-terminal *, .ait-terminal *::before, .ait-terminal *::after{box-sizing:border-box}
-.ait-terminal[data-light="true"] .ait-state[data-state="agent"]{color:#8a5a00;background:color-mix(in srgb,#c18401 16%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="agent"]{color:#5f6b7a;background:color-mix(in srgb,#5f6b7a 9%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="typing"]{color:#8a5a00;background:color-mix(in srgb,#c18401 16%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="peeking"]{color:#075985;background:color-mix(in srgb,#0ea5e9 12%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="human"]{color:#166534;background:color-mix(in srgb,#22c55e 13%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="secret"]{color:#b3261e;background:color-mix(in srgb,#d93025 13%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="exited"]{color:#8c4a4a;background:color-mix(in srgb,#a05050 11%,transparent)}
 .ait-terminal[data-light="true"] .ait-notice{color:#8a5a00;background:color-mix(in srgb,#c18401 10%,transparent)}
@@ -497,12 +503,15 @@ const PANEL_CSS = `
 .ait-glyph{display:grid;place-items:center;width:18px;height:18px;flex:none;color:var(--ait-accent);opacity:.85}
 .ait-name{font-size:11.5px;font-weight:600;letter-spacing:.01em;color:var(--ait-fg);opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32%;flex:0 1 auto}
 .ait-name:empty{display:none}
-.ait-state{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px 0 7px;border-radius:999px;font-size:10.5px;font-weight:500;letter-spacing:.01em;color:var(--ait-fg);background:color-mix(in srgb,var(--ait-fg) 8%,transparent);transition:background-color .25s ease,color .25s ease;flex:0 0 auto}
-.ait-state .dot{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 16%,transparent);transition:box-shadow .25s ease}
+.ait-state{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px 0 7px;border-radius:999px;border:1px solid transparent;font-size:10.5px;font-weight:500;letter-spacing:.01em;color:var(--ait-fg);background:color-mix(in srgb,var(--ait-fg) 8%,transparent);transition:background-color .38s ease,color .38s ease,border-color .38s ease,box-shadow .38s ease;flex:0 0 auto}
+.ait-state .dot{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 16%,transparent);transition:box-shadow .38s ease,background-color .38s ease}
 .ait-state-text{animation:ait-fade-in .18s ease}
-.ait-state[data-state="agent"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 14%,transparent)}
-.ait-state[data-state="agent"] .dot{animation:ait-breathe 2.8s ease-in-out infinite}
-.ait-state[data-state="human"]{color:var(--ait-accent);background:color-mix(in srgb,var(--ait-accent) 15%,transparent)}
+.ait-state[data-state="agent"]{color:var(--ait-muted);background:color-mix(in srgb,var(--ait-fg) 6%,transparent)}
+.ait-state[data-state="typing"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 14%,transparent);border-color:color-mix(in srgb,#e7c07d 22%,transparent)}
+.ait-state[data-state="typing"] .dot{animation:ait-breathe 1.6s ease-in-out infinite}
+.ait-state[data-state="peeking"]{color:#8fd7ff;background:color-mix(in srgb,#8fd7ff 13%,transparent);border-color:color-mix(in srgb,#8fd7ff 20%,transparent)}
+.ait-state[data-state="peeking"] .dot{animation:ait-pulse 2s ease-in-out infinite}
+.ait-state[data-state="human"]{color:#86efac;background:color-mix(in srgb,#86efac 13%,transparent);border-color:color-mix(in srgb,#86efac 20%,transparent)}
 .ait-state[data-state="secret"]{color:#ff9e9e;background:color-mix(in srgb,#ff7a7a 17%,transparent)}
 .ait-state[data-state="secret"] .dot{animation:ait-pulse 1.6s ease-in-out infinite}
 .ait-state[data-state="locked"]{color:var(--ait-muted);background:color-mix(in srgb,var(--ait-fg) 7%,transparent)}
@@ -615,7 +624,7 @@ const PANEL_CSS = `
 @keyframes ait-flash{0%{background:color-mix(in srgb,var(--ait-accent) 35%,transparent)}100%{background:transparent}}
 @keyframes ait-bell{0%,100%{opacity:1}50%{opacity:.5}}
 @media (prefers-reduced-motion: reduce){
-  .ait-state[data-state="agent"] .dot,.ait-state[data-state="secret"] .dot,.ait-state[data-state="connecting"] .dot{animation:none}
+  .ait-state[data-state="typing"] .dot,.ait-state[data-state="peeking"] .dot,.ait-state[data-state="secret"] .dot,.ait-state[data-state="connecting"] .dot{animation:none}
   .ait-terminal[data-agent="true"] .ait-bar::after{animation:none;background:none}
   .ait-secret-dot{animation:none}
   .ait-state-text,.ait-sheet,.ait-tab-body,.ait-toast,.ait-notice,.ait-icon{animation:none;transition:none}
@@ -700,15 +709,6 @@ function LockIcon(open) {
       ? React.createElement('path', { d: 'M5.6 7V4.9a2.6 2.6 0 0 1 5 1', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' })
       : React.createElement('path', { d: 'M5.4 7V5.1a2.6 2.6 0 0 1 5.2 0V7', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
     React.createElement('circle', { cx: 8, cy: 10.2, r: 0.9, fill: 'currentColor' }),
-  )
-}
-
-/** A plus for a new terminal. */
-function PlusIcon() {
-  return React.createElement(
-    'svg',
-    { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
-    React.createElement('path', { d: 'M8 3.2v9.6M3.2 8h9.6', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
   )
 }
 
@@ -797,10 +797,14 @@ export function TerminalView(props) {
     rows: 0,
     command: '',
     commandAt: 0,
+    peekAt: 0,
   })
   const [agentPulse, setAgentPulse] = React.useState(false)
+  const [peekPulse, setPeekPulse] = React.useState(false)
   const pulseTimer = React.useRef(0)
+  const peekTimer = React.useRef(0)
   const seenCommandAt = React.useRef(0)
+  const seenPeekAt = React.useRef(0)
   const [notice, setNotice] = React.useState(null)
   const [settings, setSettings] = React.useState(() => currentSettings())
   const [panelOpen, setPanelOpen] = React.useState(false)
@@ -880,6 +884,7 @@ export function TerminalView(props) {
     const showStatus = (message) => {
       const command = typeof message.command === 'string' ? message.command : ''
       const commandAt = typeof message.commandAt === 'number' ? message.commandAt : 0
+      const peekAt = typeof message.peekAt === 'number' ? message.peekAt : 0
       const next = {
         phase: message.phase || 'running',
         holder: (message.lease && message.lease.holder) || 'agent',
@@ -889,6 +894,7 @@ export function TerminalView(props) {
         rows: message.rows || 0,
         command,
         commandAt,
+        peekAt,
       }
       setStatus(next)
       writableRef.current = next.holder === 'human'
@@ -896,10 +902,20 @@ export function TerminalView(props) {
         seenCommandAt.current = commandAt
         setAgentPulse(true)
         if (pulseTimer.current !== 0) window.clearTimeout(pulseTimer.current)
+      if (peekTimer.current !== 0) window.clearTimeout(peekTimer.current)
         pulseTimer.current = window.setTimeout(() => {
           pulseTimer.current = 0
           setAgentPulse(false)
         }, 2600)
+      }
+      if (peekAt > 0 && peekAt !== seenPeekAt.current) {
+        seenPeekAt.current = peekAt
+        setPeekPulse(true)
+        if (peekTimer.current !== 0) window.clearTimeout(peekTimer.current)
+        peekTimer.current = window.setTimeout(() => {
+          peekTimer.current = 0
+          setPeekPulse(false)
+        }, 1800)
       }
     }
 
@@ -1116,6 +1132,7 @@ export function TerminalView(props) {
       if (bellTimer !== 0) window.clearTimeout(bellTimer)
       if (copyTimer !== 0) window.clearTimeout(copyTimer)
       if (pulseTimer.current !== 0) window.clearTimeout(pulseTimer.current)
+      if (peekTimer.current !== 0) window.clearTimeout(peekTimer.current)
       observer.disconnect()
       window.removeEventListener('resize', fitSoon)
       host.removeEventListener('contextmenu', onContextMenu)
@@ -1202,7 +1219,7 @@ export function TerminalView(props) {
     focusTerminal()
   }
 
-  const state = uiState(status, locked, painted)
+  const state = uiState(status, locked, painted, agentPulse, peekPulse)
   const bannerText =
     state === 'exited'
       ? labels.exited
@@ -1214,7 +1231,11 @@ export function TerminalView(props) {
             ? labels.connecting
             : state === 'human'
               ? labels.human
-              : labels.agent
+              : state === 'typing'
+                ? labels.agent
+                : state === 'peeking'
+                  ? labels.peeking
+                  : labels.ready
   const chrome = chromeFor(settings)
   const palette = paletteOf(settings.theme)
   const size = Math.min(28, Math.max(8, settings.fontSize + zoom))
@@ -1288,19 +1309,6 @@ export function TerminalView(props) {
           {
             className: 'ait-icon',
             type: 'button',
-            'data-tip': labels.newTab,
-            'aria-label': labels.newTab,
-            onClick: () => {
-              if (onNewRef.current) onNewRef.current()
-            },
-          },
-          PlusIcon(),
-        ),
-        React.createElement(
-          'button',
-          {
-            className: 'ait-icon',
-            type: 'button',
             'data-tip': labels.settings,
             'aria-label': labels.settings,
             onClick: () => setPanelOpen((open) => !open),
@@ -1309,7 +1317,7 @@ export function TerminalView(props) {
         ),
       ),
     ),
-    status.command !== '' && !locked && state === 'agent' && !status.suspended
+    status.command !== '' && !locked && !status.suspended && status.phase !== 'exited'
       ? React.createElement(
           'div',
           { className: 'ait-cmd', title: status.command },

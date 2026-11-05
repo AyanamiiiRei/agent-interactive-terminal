@@ -125,6 +125,7 @@ export function createTerminalTools(registry, options = {}) {
             },
             async execute(input) {
                 const session = registry.require(requiredString(input, 'sessionId'));
+                session.markPeek();
                 const result = await session.wait(waitSpec(input));
                 const meta = `[wait: ${result.outcome}] [phase: ${result.phase}] [elapsed: ${result.elapsedMs}ms]\n${result.status}`;
                 return render(forceView(session, result.view, input, 'auto'), meta, result.revision);
@@ -153,6 +154,7 @@ export function createTerminalTools(registry, options = {}) {
             },
             async execute(input) {
                 const session = registry.require(requiredString(input, 'sessionId'));
+                session.markPeek();
                 const snapshotOptions = {
                     mode: viewMode(input, 'auto'),
                 };
