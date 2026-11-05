@@ -180,6 +180,11 @@ describe('browser half', () => {
     expect(client.closeHandlers).toHaveLength(0)
   })
 
+  it('builds the chunk with the panel export the loader expects', () => {
+    const chunk = readFileSync(resolve(process.cwd(), 'client/client.terminal.js'), 'utf8')
+    expect(chunk).toContain('TerminalPanel:()=>')
+  })
+
   it('opens the single terminal page from the header button without a terminal id', async () => {
     const client = loadClient()
     client.apply()
