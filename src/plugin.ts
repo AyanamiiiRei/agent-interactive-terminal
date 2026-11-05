@@ -12,11 +12,13 @@
 import z from '@deepseek-ai/schemastery'
 import { accessSync, constants } from 'node:fs'
 import { join } from 'node:path'
+import { createAttachUpgrade } from './attach.js'
 import { createBridgeHandler } from './bridge.js'
 import { TerminalRegistry } from './session/registry.js'
 import { createTerminalTools } from './tools/index.js'
 import type { TerminalTool } from './tools/index.js'
 import type { RegistryOptions } from './session/registry.js'
+import type { BridgeDeps } from './bridge.js'
 
 export const name = 'agent-interactive-terminal'
 export const inject = ['tools']
@@ -82,6 +84,10 @@ interface BridgeHost {
       kind: 'prefix'
       path: string
       handler: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>
+    }): () => void
+    registerUpgrade(route: {
+      path: string
+      handler: (req: import('node:http').IncomingMessage, socket: import('node:stream').Duplex, head: Buffer) => void
     }): () => void
   }
 }
@@ -206,24 +212,33 @@ export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
   }
 
   ctx.inject<BridgeHost>(['webServer', 'agents'], (host) => {
-    const handler = createBridgeHandler({
-      resolve: (sessionId) => {
-        const agent = host.agents.get(sessionId)
-        if (agent === undefined) return undefined
-        const toolkit = toolkitFor(agent)
-        return {
-          registry: toolkit.registry,
-          open: (options) => openFromBridge(toolkit, options),
-        }
-      },
-    })
-    host.effect(() =>
-      host.webServer.register({
+    const resolve: BridgeDeps['resolve'] = (sessionId) => {
+      const agent = host.agents.get(sessionId)
+      if (agent === undefined) return undefined
+      const toolkit = toolkitFor(agent)
+      return {
+        registry: toolkit.registry,
+        open: (options) => openFromBridge(toolkit, options),
+      }
+    }
+    const handler = createBridgeHandler({ resolve })
+    const attach = createAttachUpgrade({ resolve })
+    host.effect(() => {
+      const disposeBridge = host.webServer.register({
         kind: 'prefix',
-        path: '/plugins/agent-interactive-terminal',
+        path: '/agent-terminal-bridge',
         handler,
-      }),
-    )
+      })
+      const disposeAttach = host.webServer.registerUpgrade({
+        path: '/agent-terminal-bridge/attach',
+        handler: attach.handler,
+      })
+      return () => {
+        disposeAttach()
+        disposeBridge()
+        attach.dispose()
+      }
+    })
   })
 
   if (config.mode !== 'auto') {

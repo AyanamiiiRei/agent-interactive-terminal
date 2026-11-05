@@ -3,10 +3,9 @@
 // Two surfaces share one Host registry:
 //   1. the Plugins page card for this bundle's `ait-terminal` row, which edits
 //      the shell, session cap and default execution surface;
-//   2. a right-Sidebar tab that lists the agent's live terminal sessions and
-//      shows the same screen the agent reads, with an input line for the
-//      person. Both sides write into the same PTY, so each one sees what the
-//      other is doing.
+//   2. a right-Sidebar terminal tab. Each tab is one live session, rendered by
+//      xterm.js over a WebSocket attach stream. Typing goes straight into the
+//      PTY the agent drives; there is no command input and no key row.
 //
 // Loaded by dsh-client-modules through the package `dsh.client` manifest; the
 // id must equal the package name so the module attaches to the row that
@@ -23,35 +22,8 @@ window.__ModuleLoader__.load({
     var ROW_KEY = 'agent-interactive-terminal#ait-terminal'
     var TAB_KIND = 'agent-terminal'
     var TAB_ID = 'agent-interactive-terminal'
-    var BRIDGE = '/plugins/agent-interactive-terminal'
-    var POLL_MS = 900
-
-    var CSS = [
-      '.ait-root{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px}',
-      '.ait-bar{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:.5px solid var(--dsw-alias-border-l3);flex:none}',
-      '.ait-select{min-width:0;flex:1;height:26px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:0 6px;font-size:12px}',
-      '.ait-btn{height:26px;padding:0 8px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);cursor:pointer;font-size:12px;white-space:nowrap}',
-      '.ait-btn:hover{background:var(--dsw-alias-bg-layer-2)}',
-      '.ait-btn:disabled{opacity:.5;cursor:default}',
-      '.ait-phase{color:var(--dsw-alias-label-tertiary);font-size:11px;white-space:nowrap}',
-      '.ait-screen{margin:0;flex:1;min-height:0;overflow:auto;padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;white-space:pre;tab-size:4;background:var(--dsw-alias-bg-layer-0,var(--dsw-alias-bg-layer-1))}',
-      '.ait-empty{margin:0;flex:1;display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary);padding:20px;text-align:center}',
-      '.ait-footer{display:flex;flex-direction:column;gap:6px;padding:8px 10px 10px;border-top:.5px solid var(--dsw-alias-border-l3);flex:none}',
-      '.ait-inputrow{display:flex;gap:6px}',
-      '.ait-input{min-width:0;flex:1;height:28px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l4);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:0 8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}',
-      '.ait-keys{display:flex;gap:4px;flex-wrap:wrap}',
-      '.ait-error{color:var(--dsw-alias-state-error-primary);padding:6px 10px;font-size:11px}',
-      '.ait-iconbtn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}',
-      '.ait-iconbtn:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
-    ].join('')
-
-    if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css="agent-interactive-terminal"]') === null) {
-      var tag = document.createElement('style')
-      tag.dataset.plugin = 'agent-interactive-terminal'
-      tag.dataset.pluginCss = 'agent-interactive-terminal'
-      tag.textContent = CSS
-      document.head.appendChild(tag)
-    }
+    var BRIDGE = '/agent-terminal-bridge'
+    var ATTACH = BRIDGE + '/attach'
 
     var en = {
       title: 'Default shell',
@@ -68,22 +40,25 @@ window.__ModuleLoader__.load({
       'mode.auto': 'Auto (model decides)',
       'mode.terminal': 'Interactive terminal first',
       'mode.exec': 'One-shot commands first',
-      'tab.title': 'Agent terminal',
-      'tab.guide.title': 'Agent terminal',
-      'tab.guide.description': 'Watch and share the terminal sessions the agent is using.',
-      open: 'Open interactive terminal',
-      'panel.new': 'New',
-      'panel.close': 'Close',
-      'panel.empty': 'No terminal session yet. The agent creates one with terminal_open, or you can start one here.',
-      'panel.placeholder': 'Type into the shared terminal',
-      'panel.send': 'Send',
-      'panel.pick': 'Choose a session',
-      'panel.error': 'The terminal bridge did not answer.',
-      'key.ctrl-c': 'Ctrl-C',
-      'key.escape': 'Esc',
-      'key.tab': 'Tab',
-      'key.up': 'Up',
-      'key.down': 'Down',
+      'tab.title': 'Terminal',
+      'tab.guide.title': 'New terminal',
+      'tab.guide.description': 'Open a shell in the right sidebar, shared with the agent.',
+      open: 'Open terminal',
+      'state.agent': 'Agent is driving',
+      'state.human': 'You have control',
+      'state.secret': 'Waiting for your password',
+      'state.exited': 'Process exited',
+      'action.takeover': 'Take control',
+      'action.handback': 'Hand back',
+      'action.newTab': 'New terminal',
+      'hint.takeover': 'Click “Take control” to type into this terminal.',
+      'hint.reconnecting': 'Connection lost, reconnecting…',
+      'hint.disconnected': 'Connection lost. Close the tab and open the terminal again.',
+      'hint.denied': 'The terminal refused that input.',
+      'starting': 'Starting a shell…',
+      'gone': 'This terminal session has ended.',
+      'openFailed': 'Could not open a terminal for this session.',
+      'closeTab': 'Close tab',
     }
     var zh = {
       title: '默认 shell',
@@ -100,22 +75,25 @@ window.__ModuleLoader__.load({
       'mode.auto': '自动（由模型决定）',
       'mode.terminal': '优先交互式终端',
       'mode.exec': '优先一次性命令',
-      'tab.title': 'Agent 终端',
-      'tab.guide.title': 'Agent 终端',
-      'tab.guide.description': '查看并接管 agent 正在使用的终端会话。',
-      open: '打开交互式终端',
-      'panel.new': '新建',
-      'panel.close': '关闭',
-      'panel.empty': '还没有终端会话。agent 会用 terminal_open 创建，你也可以在这里直接开一个。',
-      'panel.placeholder': '直接键入共享终端',
-      'panel.send': '发送',
-      'panel.pick': '选择一个会话',
-      'panel.error': '终端桥接没有响应。',
-      'key.ctrl-c': 'Ctrl-C',
-      'key.escape': 'Esc',
-      'key.tab': 'Tab',
-      'key.up': '上',
-      'key.down': '下',
+      'tab.title': '终端',
+      'tab.guide.title': '新建终端',
+      'tab.guide.description': '在右侧边栏打开一个与 agent 共享的 shell。',
+      open: '打开终端',
+      'state.agent': 'Agent 正在操作',
+      'state.human': '你已接管',
+      'state.secret': '需要你输入密码',
+      'state.exited': '进程已退出',
+      'action.takeover': '接管输入',
+      'action.handback': '交还控制',
+      'action.newTab': '新建终端',
+      'hint.takeover': '先点“接管输入”，再把键盘交给终端。',
+      'hint.reconnecting': '连接中断，正在重连…',
+      'hint.disconnected': '连接已断开，请关掉标签页重新打开终端。',
+      'hint.denied': '终端拒绝了这次输入。',
+      'starting': '正在启动 shell…',
+      'gone': '这个终端会话已经结束。',
+      'openFailed': '无法为这个会话打开终端。',
+      'closeTab': '关闭标签页',
     }
 
     var selectStyle = {
@@ -128,6 +106,12 @@ window.__ModuleLoader__.load({
       padding: '0 10px',
       fontSize: '13px',
     }
+
+    var LazyTerminal = React.lazy(function () {
+      return require.async('./client.terminal.js').then(function (loaded) {
+        return { default: loaded.TerminalView }
+      })
+    })
 
     function Card(props) {
       var form = props.form
@@ -260,200 +244,185 @@ window.__ModuleLoader__.load({
       var q = '?sessionId=' + encodeURIComponent(sessionId)
       return {
         state: function () { return request('/state' + q) },
-        screen: function (id) { return request('/screen' + q + '&id=' + encodeURIComponent(id)) },
         open: function (cols, rows) { return request('/open' + q, { method: 'POST', body: { cols: cols, rows: rows } }) },
-        send: function (id, text, submit) {
-          return request('/send' + q, { method: 'POST', body: { id: id, text: text, submit: submit } })
-        },
-        key: function (id, key) { return request('/key' + q, { method: 'POST', body: { id: id, key: key } }) },
         close: function (id) { return request('/close' + q, { method: 'POST', body: { id: id } }) },
       }
     }
 
-    function phaseLabel(screen) {
-      if (!screen) return ''
-      return (screen.phase || '') + ' · ' + screen.cols + 'x' + screen.rows
+    function bindingKey(sessionId, tabId) {
+      return 'ait:tab:' + sessionId + ':' + tabId
     }
 
-    function AgentTerminalBody(props) {
-      var api = props.api
+    function readBinding(sessionId, tabId) {
+      try {
+        var raw = window.localStorage.getItem(bindingKey(sessionId, tabId))
+        if (!raw) return null
+        var parsed = JSON.parse(raw)
+        return parsed && typeof parsed.id === 'string' ? parsed : null
+      } catch (error) {
+        return null
+      }
+    }
+
+    function writeBinding(sessionId, tabId, value) {
+      try {
+        window.localStorage.setItem(bindingKey(sessionId, tabId), JSON.stringify(value))
+      } catch (error) {
+        // Private-mode storage can refuse writes; the navigation params still work.
+      }
+    }
+
+    function clearBinding(sessionId, tabId) {
+      try {
+        window.localStorage.removeItem(bindingKey(sessionId, tabId))
+      } catch (error) {
+        // Nothing to do.
+      }
+    }
+
+    function humanName(name) {
+      if (typeof name !== 'string' || name.trim() === '') return null
+      if (/^s-[0-9a-f]{4,}/i.test(name)) return null
+      return name
+    }
+
+    function takeParams(tab, props) {
+      var params = tab && tab.navigation && tab.navigation.params
+      if (!params && props.navigation) params = props.navigation.params
+      return params && typeof params === 'object' ? params : null
+    }
+
+    function useTabRecord(props) {
+      if (typeof props.useTabInfo === 'function') {
+        var info = props.useTabInfo()
+        if (info && info.tab) return info.tab
+      }
+      return props.tab || null
+    }
+
+    function labelsFor(t) {
+      return {
+        agent: t('state.agent'),
+        human: t('state.human'),
+        secret: t('state.secret'),
+        exited: t('state.exited'),
+        takeover: t('action.takeover'),
+        handback: t('action.handback'),
+        newTab: t('action.newTab'),
+        takeoverHint: t('hint.takeover'),
+        reconnecting: t('hint.reconnecting'),
+        disconnected: t('hint.disconnected'),
+        denied: t('hint.denied'),
+      }
+    }
+
+    /**
+     * One terminal tab: resolve the session it is bound to, attaching
+     * immediately, and spawn a shell when the tab was opened without one.
+     */
+    function TerminalBody(props) {
       var t = props.t || function (key) { return (en[key] || key) }
-      var apiRef = React.useRef(api)
-      apiRef.current = api
-      var sessionsState = React.useState([])
-      var sessions = sessionsState[0]
-      var setSessions = sessionsState[1]
-      var selectedState = React.useState(null)
-      var selected = selectedState[0]
-      var setSelected = selectedState[1]
-      var screenState = React.useState(null)
-      var screen = screenState[0]
-      var setScreen = screenState[1]
+      var sessionId = props.dshSessionId
+      var tab = useTabRecord(props)
+      var tabId = tab && tab.id ? tab.id : props.tabId
+      var params = takeParams(tab, props)
+      var initial = params && typeof params.id === 'string' ? { id: params.id, name: params.name || params.id } : null
+      var bound = React.useRef(initial || (tabId ? readBinding(sessionId, tabId) : null))
       var errorState = React.useState(null)
       var error = errorState[0]
       var setError = errorState[1]
-      var draftState = React.useState('')
-      var draft = draftState[0]
-      var setDraft = draftState[1]
-      var busyState = React.useState(false)
-      var busy = busyState[0]
-      var setBusy = busyState[1]
-      var preRef = React.useRef(null)
+      var targetState = React.useState(bound.current)
+      var target = targetState[0]
+      var setTarget = targetState[1]
 
-      var refreshState = React.useCallback(function () {
-        return apiRef.current.state().then(function (payload) {
-          setError(null)
-          var list = Array.isArray(payload.sessions) ? payload.sessions : []
-          setSessions(list)
-          setSelected(function (current) {
-            if (current !== null && list.some(function (item) { return item.id === current })) return current
-            return list.length > 0 ? list[0].id : null
-          })
+      React.useEffect(function () {
+        if (target !== null || sessionId === undefined) return undefined
+        var alive = true
+        apiFor(sessionId).open(120, 30).then(function (created) {
+          if (!alive) return
+          var next = { id: created.id, name: created.name || created.id }
+          if (tabId) writeBinding(sessionId, tabId, next)
+          setTarget(next)
         }).catch(function (reason) {
+          if (!alive) return
           setError(reason instanceof Error ? reason.message : String(reason))
         })
+        return function () { alive = false }
+      }, [target, sessionId, tabId])
+
+      React.useEffect(function () {
+        if (target !== null && tabId && sessionId !== undefined) writeBinding(sessionId, tabId, target)
+      }, [target, tabId, sessionId])
+
+      // A restored tab may point at a shell that no longer exists. Only a fresh
+      // spawn (params) is guaranteed to be alive; everything else is checked
+      // once and the tab is closed when the Host no longer knows the session.
+      React.useEffect(function () {
+        if (target === null || sessionId === undefined) return undefined
+        if (params && params.id === target.id) return undefined
+        if (!props.closeTab || !tabId) return undefined
+        var alive = true
+        apiFor(sessionId).state().then(function (payload) {
+          if (!alive) return
+          var sessions = Array.isArray(payload.sessions) ? payload.sessions : []
+          var found = sessions.some(function (session) { return session.id === target.id })
+          if (!found) props.closeTab(tabId)
+        }).catch(function () {
+          // The bridge being unreachable is not evidence the session is gone.
+        })
+        return function () { alive = false }
       }, [])
 
-      var refreshScreen = React.useCallback(function (id) {
-        if (id === null) {
-          setScreen(null)
-          return Promise.resolve()
-        }
-        return apiRef.current.screen(id).then(function (payload) {
-          setError(null)
-          setScreen(payload)
-        }).catch(function (reason) {
-          setError(reason instanceof Error ? reason.message : String(reason))
-        })
-      }, [])
-
-      React.useEffect(function () {
-        refreshState()
-        var timer = setInterval(function () {
-          refreshState()
-        }, POLL_MS * 5)
-        return function () { clearInterval(timer) }
-      }, [refreshState])
-
-      React.useEffect(function () {
-        refreshScreen(selected)
-        var timer = setInterval(function () {
-          refreshScreen(selected)
-        }, POLL_MS)
-        return function () { clearInterval(timer) }
-      }, [selected, refreshScreen])
-
-      React.useEffect(function () {
-        if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight
-      }, [screen && screen.revision])
-
-      function act(promise) {
-        setBusy(true)
-        return promise.then(function (result) {
-          setBusy(false)
-          return result
-        }, function (reason) {
-          setBusy(false)
-          setError(reason instanceof Error ? reason.message : String(reason))
-        })
+      function closeThisTab() {
+        if (props.closeTab && tabId) props.closeTab(tabId)
       }
 
-      function onCreate() {
-        act(api.open(100, 30)).then(function (created) {
-          if (created !== undefined && created !== null && created.id) {
-            refreshState().then(function () { setSelected(created.id) })
-          }
-        })
+      if (error !== null) {
+        return React.createElement(
+          'section',
+          { style: { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } },
+          React.createElement('div', null, t('openFailed')),
+          React.createElement('div', { style: { color: 'var(--dsw-alias-state-error-primary)' } }, error),
+          React.createElement('button', { type: 'button', onClick: closeThisTab, style: { alignSelf: 'flex-start', height: 26, padding: '0 10px', borderRadius: 6, border: '0.5px solid var(--dsw-alias-border-l4)', background: 'transparent', color: 'inherit', cursor: 'pointer' } }, t('closeTab')),
+        )
       }
 
-      function onSend(event) {
-        if (event) event.preventDefault()
-        if (selected === null || draft.length === 0 || busy) return
-        var text = draft
-        setDraft('')
-        act(api.send(selected, text, true)).then(function () {
-          setTimeout(function () { refreshScreen(selected) }, 120)
-        })
+      if (target === null) {
+        return React.createElement('section', { style: { padding: 16, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } }, t('starting'))
       }
-
-      function onKey(key) {
-        if (selected === null || busy) return
-        act(api.key(selected, key)).then(function () {
-          setTimeout(function () { refreshScreen(selected) }, 120)
-        })
-      }
-
-      function onClose() {
-        if (selected === null || busy) return
-        act(api.close(selected)).then(function () {
-          setScreen(null)
-          refreshState()
-        })
-      }
-
-      var options = sessions.map(function (item) {
-        return React.createElement('option', { key: item.id, value: item.id }, item.name || item.id)
-      })
 
       return React.createElement(
-        'section',
-        { className: 'ait-root' },
-        React.createElement(
-          'header',
-          { className: 'ait-bar' },
-          React.createElement(
-            'select',
-            {
-              className: 'ait-select',
-              value: selected === null ? '' : selected,
-              onChange: function (event) { setSelected(event.target.value || null) },
-              title: t('panel.pick'),
-            },
-            options.length === 0 ? React.createElement('option', { value: '' }, t('panel.empty')) : null,
-            options,
-          ),
-          React.createElement('button', { className: 'ait-btn', onClick: onCreate, disabled: busy }, t('panel.new')),
-          React.createElement('button', { className: 'ait-btn', onClick: onClose, disabled: busy || selected === null }, t('panel.close')),
-        ),
-        screen === null
-          ? React.createElement('p', { className: 'ait-empty' }, t('panel.empty'))
-          : React.createElement('pre', { className: 'ait-screen', ref: preRef }, (screen.lines || []).join('\n')),
-        React.createElement(
-          'footer',
-          { className: 'ait-footer' },
-          React.createElement(
-            'div',
-            { className: 'ait-keys' },
-            React.createElement('span', { className: 'ait-phase' }, phaseLabel(screen)),
-            React.createElement('button', { className: 'ait-btn', onClick: function () { onKey('ctrl-c') }, disabled: busy || selected === null }, t('key.ctrl-c')),
-            React.createElement('button', { className: 'ait-btn', onClick: function () { onKey('escape') }, disabled: busy || selected === null }, t('key.escape')),
-            React.createElement('button', { className: 'ait-btn', onClick: function () { onKey('tab') }, disabled: busy || selected === null }, t('key.tab')),
-            React.createElement('button', { className: 'ait-btn', onClick: function () { onKey('up') }, disabled: busy || selected === null }, t('key.up')),
-            React.createElement('button', { className: 'ait-btn', onClick: function () { onKey('down') }, disabled: busy || selected === null }, t('key.down')),
-          ),
-          React.createElement(
-            'form',
-            { className: 'ait-inputrow', onSubmit: onSend },
-            React.createElement('input', {
-              className: 'ait-input',
-              value: draft,
-              placeholder: t('panel.placeholder'),
-              onChange: function (event) { setDraft(event.target.value) },
-              disabled: selected === null,
-            }),
-            React.createElement('button', { className: 'ait-btn', type: 'submit', disabled: busy || selected === null || draft.length === 0 }, t('panel.send')),
-          ),
-          error === null ? null : React.createElement('div', { className: 'ait-error' }, error + ' ' + t('panel.error')),
-        ),
+        React.Suspense,
+        { fallback: React.createElement('section', { style: { padding: 16, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } }, t('starting')) },
+        React.createElement(LazyTerminal, {
+          sessionId: sessionId,
+          terminalId: target.id,
+          name: target.name,
+          attachPath: ATTACH,
+          labels: labelsFor(t),
+          onNewTab: props.openNew,
+          onCloseTab: closeThisTab,
+        }),
       )
+    }
+
+    /** The chip title: the session name, or the generic terminal label. */
+    function TerminalTitle(props) {
+      var t = props.t || function (key) { return (en[key] || key) }
+      var tab = useTabRecord(props)
+      var params = takeParams(tab, props)
+      var tabId = tab && tab.id ? tab.id : props.tabId
+      var stored = tabId && props.dshSessionId ? readBinding(props.dshSessionId, tabId) : null
+      var name = humanName(params && params.name) || humanName(stored && stored.name) || t('tab.title')
+      return React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 } }, React.createElement(TerminalGlyph, {}), React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, name))
     }
 
     function TerminalGlyph() {
       return React.createElement(
         'svg',
-        { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
-        React.createElement('path', { d: 'M3 4L7 8L3 12', stroke: 'currentColor' }),
-        React.createElement('path', { d: 'M9 12H13', stroke: 'currentColor' }),
+        { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        React.createElement('path', { d: 'M3 4L7 8L3 12', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+        React.createElement('path', { d: 'M9 12H13', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
       )
     }
 
@@ -478,11 +447,59 @@ window.__ModuleLoader__.load({
         )
       })
 
+      function findOpenTab(sessionId, terminalId) {
+        var tabs = ctx.sidebarRight.openTabs.getSnapshot()
+        for (var index = 0; index < tabs.length; index += 1) {
+          var item = tabs[index]
+          if (item.kind !== TAB_KIND) continue
+          // The inventory carries no navigation params, so the per-tab binding
+          // written by the body is the authority on which shell it shows.
+          var bound = readBinding(sessionId, item.tabId)
+          if (bound !== null && bound.id === terminalId) return item
+        }
+        return null
+      }
+
+      function openTerminalTab(sessionId, target) {
+        var existing = findOpenTab(sessionId, target.id)
+        if (existing !== null) {
+          ctx.sidebarRight.focus(existing.tabId)
+          return
+        }
+        ctx.sidebarRight.openTab(TAB_KIND, { params: { id: target.id, name: target.name } })
+      }
+
+      function openRecentOrCreate(sessionId) {
+        var api = apiFor(sessionId)
+        api.state().then(function (payload) {
+          var list = Array.isArray(payload.sessions) ? payload.sessions : []
+          if (list.length > 0) {
+            var recent = list[list.length - 1]
+            openTerminalTab(sessionId, { id: recent.id, name: recent.name || recent.id })
+            return undefined
+          }
+          return api.open(120, 30).then(function (created) {
+            openTerminalTab(sessionId, { id: created.id, name: created.name || created.id })
+          })
+        }).catch(function () {
+          // No live agent for this view, or the bridge is not mounted.
+        })
+      }
+
+      function openNewTab(sessionId) {
+        if (typeof sessionId !== 'string') return
+        apiFor(sessionId).open(120, 30).then(function (created) {
+          ctx.sidebarRight.openTab(TAB_KIND, { params: { id: created.id, name: created.name || created.id } })
+        }).catch(function () {
+          // The panel shows its own error if the tab cannot attach.
+        })
+      }
+
       ctx.effect(function () {
         return ctx.sidebarRightTabs.register({
           id: TAB_ID,
           kind: TAB_KIND,
-          multiple: false,
+          multiple: true,
           priority: 'extension',
           title: function () { return t('tab.title') },
           guide: [
@@ -497,15 +514,47 @@ window.__ModuleLoader__.load({
       })
 
       ctx.effect(function () {
+        return ctx.sidebarRight.registerCloseHandler(TAB_KIND, function (sessionId, tab) {
+          var params = tab.navigation && tab.navigation.params
+          var bound = params && typeof params.id === 'string' ? params : readBinding(sessionId, tab.id)
+          if (bound && typeof bound.id === 'string') {
+            void apiFor(sessionId).close(bound.id).catch(function () {})
+          }
+          clearBinding(sessionId, tab.id)
+        })
+      })
+
+      ctx.effect(function () {
         return ctx.slots.inject('sidebar.right.pane.tab', function () {
           return ctx.slots.register(
             {
               name: 'sidebar.right.pane.tab',
               key: TAB_ID,
               locale: NS,
-              inject: function (sessionId) { return { api: apiFor(sessionId), t: t } },
+              inject: function (sessionId) {
+                return {
+                  t: t,
+                  dshSessionId: sessionId,
+                  openNew: function () { openNewTab(sessionId) },
+                  closeTab: function (tabId) { ctx.sidebarRight.close(tabId) },
+                }
+              },
             },
-            AgentTerminalBody,
+            TerminalBody,
+          )
+        })
+      })
+
+      ctx.effect(function () {
+        return ctx.slots.inject('sidebar.right.pane.tab.title', function () {
+          return ctx.slots.register(
+            {
+              name: 'sidebar.right.pane.tab.title',
+              key: TAB_ID,
+              locale: NS,
+              inject: function (sessionId) { return { t: t, dshSessionId: sessionId } },
+            },
+            TerminalTitle,
           )
         })
       })
@@ -518,12 +567,10 @@ window.__ModuleLoader__.load({
               id: 'agent-terminal-open',
               order: 30,
               locale: NS,
-              inject: function () {
+              inject: function (sessionId) {
                 return {
                   t: t,
-                  openTerminal: function () {
-                    ctx.sidebarRight.openTab(TAB_KIND, {})
-                  },
+                  openTerminal: function () { openRecentOrCreate(sessionId) },
                 }
               },
             },
@@ -532,7 +579,7 @@ window.__ModuleLoader__.load({
               return React.createElement(
                 'button',
                 {
-                  className: 'ait-iconbtn',
+                  className: 'ait-icon-btn',
                   type: 'button',
                   title: label,
                   'aria-label': label,
@@ -548,6 +595,14 @@ window.__ModuleLoader__.load({
           )
         })
       })
+
+      if (!document.querySelector('style[data-plugin-css="agent-interactive-terminal/header"]')) {
+        var tag = document.createElement('style')
+        tag.dataset.plugin = 'agent-interactive-terminal'
+        tag.dataset.pluginCss = 'agent-interactive-terminal/header'
+        tag.textContent = '.ait-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:6px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}.ait-icon-btn:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}'
+        document.head.appendChild(tag)
+      }
     }
 
     exports.apply = apply

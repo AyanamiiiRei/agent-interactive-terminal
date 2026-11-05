@@ -247,7 +247,7 @@ interface TerminalBackendSession {
 
 **单写者租约。** 任一时刻只有一方能写。Agent 在 `open` 时拿到租约，每次 `send` 前校验；人可以在 UI 上抢占，Agent 永远不能抢占人。
 
-**人侧接管是显式的。** 面板上方有横幅“Agent 正在操作”，点“接管输入”或直接在终端里按键才转移租约。不做“窗口聚焦即接管”，否则用户点一下侧栏就把 Agent 正在跑的交互命令打断。
+**人侧接管是显式的。** 面板上方有横幅“Agent 正在操作”，点“接管输入”才转移租约；在 Agent 持有租约期间，终端里的按键会被拦下并提示，而不是悄悄送进 PTY。不做“窗口聚焦即接管”，否则用户点一下侧栏就把 Agent 正在跑的交互命令打断。
 
 **人被拦截时，Agent 立刻知道。** 租约在人手里时，`send` 不阻塞，直接返回 `lease_denied`，并提示“控制权在用户手里，请等待或请求归还”。正在进行的 `wait` 在人接管时以 `human_took_over` 结算，因为人的输入可能改变了命令的语义，静默成功会误导模型。
 
@@ -256,6 +256,27 @@ interface TerminalBackendSession {
 **密码自动挂起。** 当租约在 Agent 手里，而屏幕出现密码类提示（`Password:`、`passphrase for`、`[sudo] password for`、`Verification code`、`OTP`，外加部署方配置的正则），或者前台进程被识别为 `sudo`、`ssh` 的密码阶段，服务立刻把租约置为 `suspended`，相位置为 `waiting_input`，正在等待的调用以 `human_required` 结算并附带提示。UI 弹横幅并可以响铃。模型拿不到任何密码，也不会继续往终端里写。
 
 **审计要区分写者。** 每条写入在会话日志里落一条事件：`{ sessionId, actor: 'agent' | 'human', source: 'tool' | 'ui', bytes, textHash, firstLine, sensitive }`。Agent 的写入本来就躺在 transcript 里，人的写入只有这条记录，没有它就无法追责，也无法在事后解释“为什么屏幕变成了这样”。
+
+### 7.1 右侧边栏的终端
+
+实现由三块组成：Host 的 WebSocket attach（`src/attach.ts`）、一个只回环的 HTTP
+桥（`src/bridge.ts`），和 bundle 的浏览器半边（`client/`）。
+
+attach 是双工流：连上之后先订阅输出，再发 `hello`（id、名字、尺寸、相位、租约）
+和 `snapshot`（`@xterm/addon-serialize` 产生的 ANSI），然后把订阅期间攒下的输出
+补发出去。之后二进制帧就是 PTY 字节，文本帧是控制消息：`write`、`resize`、
+`takeover`、`handback`。`write` 在服务端再校验一次租约，租约在人手里时回
+`denied`，不是靠前端自觉。shell 退出时服务端发 `exited`，带退出码，然后关掉
+socket；前端收到之后把标签页关掉，这条事件是生命周期的唯一事实来源。
+
+浏览器端不再有输入框。xterm.js 的 `onData` 原样送进 PTY，输出原样写回终端；
+键盘、选中复制、右键或 Ctrl+Shift+V 粘贴、窗口 resize 全部由模拟器处理。每个
+标签页绑定一条 Host 会话，绑定关系写在 localStorage，刷新之后能恢复到同一条
+会话；恢复时如果 Host 已经不认得这条会话，标签页会自己关掉。
+
+设置面板完全在浏览器端：主题（七套带完整 16 色的调色板）、字体、字号、行高、
+字重、光标、回滚、响铃、复制粘贴选项和快捷键表，改动立即写进 xterm 的 options
+并保存到 localStorage。它是嵌在终端里的浮层，不是模态对话框。
 
 ---
 

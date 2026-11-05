@@ -10,14 +10,14 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml"><img src="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node"></a>
-  <img src="https://img.shields.io/badge/tests-29%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-49%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
 > **状态**：M1 的主体、M2 的会话层（控制租约、密码挂起、密钥注入）、M3 的 shell
-> 保真和会话胶囊都已经落地，二十九个测试在 Linux 的 Node 20 和 Node 22 上通过。
-> 仓库同时以 DSH bundle 的形式发布，并进入了插件市场索引。
-> 还没做的条目在 [ROADMAP.md](ROADMAP.md)。
+> 保真和会话胶囊都已经落地，右侧边栏的 xterm 终端也已经接上同一条 attach 流，
+> 四十九个测试在 Linux 的 Node 20 和 Node 22 上通过。仓库同时以 DSH bundle 的形式
+> 发布，并进入了插件市场索引。还没做的条目在 [ROADMAP.md](ROADMAP.md)。
 
 ## ✨ 为什么需要它
 
@@ -59,16 +59,28 @@ git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#a34e1dae2d865
 
 ### 🖥️ 共享终端面板
 
-启用之后，对话页会话标题栏会出现一个终端图标。点它，右侧边栏会打开“Agent 终端”
-面板。面板列出当前会话已经开着的交互式终端，显示的是 agent 用 `terminal_snapshot`
-看到的同一块屏幕，并且会持续刷新。下面的输入框直接写进同一个 PTY：你敲命令
-（比如 `conda activate`、`psql`、`python`）时，agent 在下一轮就能看到结果；agent
-写进去的东西，你也会立刻在面板里看到。
+启用之后，对话页会话标题栏会出现一个终端图标。点它，右侧边栏会打开一个真正的
+终端：xterm.js 直接接管键盘，没有额外的输入框，也没有“发送”按钮。标签页和 Host
+上的一条会话一一对应，打开标签页就立刻启动 shell 并接上同一条 PTY，关掉标签页
+就终止整棵进程树；shell 自己退出时，标签页会在片刻之后自动关闭。重复点标题栏的
+图标会聚焦已经绑定到最新会话的标签页，不会叠出第二份视图。
 
-“新建”按钮会以 `kind: user` 开一个会话，agent 之后可以用 `terminal_list` 发现它，
-再用 `terminal_send` 继续操作。Ctrl-C、Esc、Tab 和上下键在面板底部。桥接只监听
-本机回环地址，并检查 Host 和 Origin 头；终端进程用你自己的用户权限运行，这一点
-和右侧边栏自带的终端一致。
+面板顶部是一条租约横幅。Agent 持有控制权时显示“Agent 正在操作”，键盘输入被拦下，
+点“接管输入”之后才能打字，交还时点“交还控制”。出现密码提示时横幅变红，显示
+“需要你输入密码”，你输入的内容不会进入模型的上下文。你敲的每条命令，agent 下一轮
+用 `terminal_snapshot` 看到的都是同一块屏幕；agent 写进去的东西，你也会立刻在面板
+里看到。
+
+键盘、复制粘贴和尺寸变化都走 WebSocket attach 流。选中文本即复制，Ctrl+Shift+V
+或右键粘贴走括号粘贴，窗口变化时自动 fit 并向 PTY 发 resize。快捷键沿用 Ptyxis
+的习惯：Ctrl+Shift+T 新建，Ctrl+Shift+W 关闭，Ctrl+Shift+C/V 复制粘贴，
+Ctrl+=、Ctrl+-、Ctrl+0 缩放字号。
+
+面板右上角的齿轮打开设置：七套主题（深色、浅色、Solarized 两种、Dracula、
+One Dark、GNOME、Tango，都带完整的 16 色 ANSI 调色板）、字体与字号、行高、字重、
+连字、光标形状与闪烁、回滚行数、响铃、选中即复制、右键粘贴，以及可以逐项改键的
+快捷键表。改动立即生效并保存在 localStorage，底部有“恢复默认”。设置面板嵌在
+终端里，不会弹模态框挡住内容。
 
 配置卡里新增了“默认执行方式”。“优先交互式终端”会给 agent 一段系统提示，让它
 优先把 REPL、包管理器、数据库客户端这类工作放进共享终端；“优先一次性命令”则
@@ -194,8 +206,10 @@ const session = await sessions.open({
 - 🧩 `registry.capsule()` 提供每轮注入用的会话胶囊：每个会话一行，外加一个只在
   摘要变化时才改变的版本号。
 - 🌐 一个浏览器接入演示，用 xterm.js 共享同一条活动会话，人工接管之前保持只读。
-- 🧪 二十九个测试，覆盖屏幕模型、会话生命周期、shell 集成、租约、密钥、审计、
-  胶囊和工具层。
+- 🖥️ 右侧边栏的真终端：xterm.js 加 WebSocket attach，有主题、字体、光标、回滚、
+  响铃、复制粘贴和可改键的快捷键表，租约横幅区分“Agent 正在操作”和“你已接管”。
+- 🧪 四十九个测试，覆盖屏幕模型、会话生命周期、shell 集成、租约、密钥、审计、
+  胶囊、工具层和 attach 流。
 
 ## 🧩 八个工具
 
@@ -249,7 +263,11 @@ src/session/session.ts   TerminalSession：写入、等待、按键、快照、�
 src/session/registry.ts  会话 id、并发上限、查找、清理与会话胶囊
 src/session/shell.ts     $SHELL 解析、bash 与 zsh 的启动文件包装
 src/tools/index.ts       八个面向模型的工具定义
+src/attach.ts            浏览器与 Host 之间的双工 attach 流
+src/bridge.ts            仅回环的 HTTP 桥，面板用来开会话、读屏幕
 src/cli/demo.ts          走工具面的交互演示
+client/index.js          bundle 的浏览器半边：配置卡、标签页和标题栏按钮
+client/terminal.src.js   xterm 终端与设置面板，构建成 client.terminal.js
 test/                    屏幕、会话、shell、租约、胶囊与工具测试
 docs/design.zh.md        完整设计文档
 ROADMAP.md               里程碑、范围与明确的非目标
@@ -261,9 +279,8 @@ M1 做单智能体的可读屏幕和判定准确的等待。M2 加共享会话�
 M3 打磨 shell 保真与多会话上下文。[ROADMAP.md](ROADMAP.md) 列出了每一项和每一个
 明确的非目标。
 
-尚未实现的部分：harness 侧的 attach 接线（演示已经展示了协议）、审计之外的打码
-区间、空闲会话回收、按模式唤醒空闲智能体的事件通道、fish 集成，以及 Windows
-和 macOS 的对齐。
+尚未实现的部分：审计之外的打码区间、空闲会话回收、按模式唤醒空闲智能体的事件
+通道、fish 集成，以及 Windows 和 macOS 的对齐。
 
 ## 📚 相关工作
 

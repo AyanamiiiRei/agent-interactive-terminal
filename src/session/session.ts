@@ -221,6 +221,11 @@ export class TerminalSession {
     return this.screen.revisionNumber
   }
 
+  /** Exit status of the shell, when it has exited. */
+  get exitCode(): number | null {
+    return this.lastExitCode
+  }
+
   get size(): { cols: number; rows: number } {
     return { cols: this.screen.cols, rows: this.screen.rows }
   }

@@ -8,7 +8,7 @@
  * agent is immediately visible to the person, and a session opened from the
  * panel can be driven by the agent's tools by id.
  *
- * The routes live under `/plugins/agent-interactive-terminal` on the Host web
+ * The routes live under `/agent-terminal-bridge` on the Host web
  * server. They accept only loopback requests with the same-origin check the
  * other in-page plugins use, because the payload can type into a live shell.
  *
@@ -194,7 +194,7 @@ function summaryOf(session: TerminalSession): Record<string, unknown> {
  * the plugin registers it on the Host web server.
  *
  * @param deps - session resolution.
- * @returns an HTTP handler for every `/plugins/agent-interactive-terminal` path.
+ * @returns an HTTP handler for every `/agent-terminal-bridge` path.
  */
 export function createBridgeHandler(deps: BridgeDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res) => {
@@ -203,7 +203,7 @@ export function createBridgeHandler(deps: BridgeDeps): (req: IncomingMessage, re
       return
     }
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
-    const suffix = url.pathname.replace(/^\/plugins\/agent-interactive-terminal/, '') || '/'
+    const suffix = url.pathname.replace(/^\/agent-terminal-bridge/, '') || '/'
     const sessionId = param(url.searchParams, 'sessionId') ?? ''
     if (sessionId === '') {
       json(res, 400, { error: 'sessionId is required' })

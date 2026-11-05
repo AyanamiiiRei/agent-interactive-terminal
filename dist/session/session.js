@@ -164,6 +164,10 @@ export class TerminalSession {
     get revision() {
         return this.screen.revisionNumber;
     }
+    /** Exit status of the shell, when it has exited. */
+    get exitCode() {
+        return this.lastExitCode;
+    }
     get size() {
         return { cols: this.screen.cols, rows: this.screen.rows };
     }

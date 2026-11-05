@@ -33,7 +33,7 @@ async function serve(sessionId: string): Promise<Mounted> {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as AddressInfo).port
   return {
-    base: `http://127.0.0.1:${port}/plugins/agent-interactive-terminal`,
+    base: `http://127.0.0.1:${port}/agent-terminal-bridge`,
     registry,
     async close() {
       await registry.closeAll()

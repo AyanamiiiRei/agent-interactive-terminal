@@ -157,7 +157,7 @@ function summaryOf(session) {
  * the plugin registers it on the Host web server.
  *
  * @param deps - session resolution.
- * @returns an HTTP handler for every `/plugins/agent-interactive-terminal` path.
+ * @returns an HTTP handler for every `/agent-terminal-bridge` path.
  */
 export function createBridgeHandler(deps) {
     return async (req, res) => {
@@ -166,7 +166,7 @@ export function createBridgeHandler(deps) {
             return;
         }
         const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-        const suffix = url.pathname.replace(/^\/plugins\/agent-interactive-terminal/, '') || '/';
+        const suffix = url.pathname.replace(/^\/agent-terminal-bridge/, '') || '/';
         const sessionId = param(url.searchParams, 'sessionId') ?? '';
         if (sessionId === '') {
             json(res, 400, { error: 'sessionId is required' });

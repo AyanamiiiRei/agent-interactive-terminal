@@ -10,13 +10,13 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml"><img src="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node"></a>
-  <img src="https://img.shields.io/badge/tests-29%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-49%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
 > **Status.** M1 is in place, the M2 session layer (control lease, password
 > suspension, secret injection) has landed, and M3's shell fidelity and session
-> capsule are done. Twenty-nine tests pass on Linux with Node 20 and Node 22.
+> capsule are done. Forty-nine tests pass on Linux with Node 20 and Node 22.
 > The repository also ships as a DSH bundle listed in a plugin market index.
 > Open items are tracked in [ROADMAP.md](ROADMAP.md).
 
@@ -69,18 +69,34 @@ only sessions opened afterwards; existing sessions keep their shell.
 ### 🖥️ The shared terminal panel
 
 With the plugin enabled, the session header above the conversation gets a
-terminal icon. Clicking it opens the "Agent terminal" tab in the right sidebar.
-The panel lists the interactive sessions that are currently open for this
-session, shows the same screen the agent reads with `terminal_snapshot`, and
-refreshes continuously. The input line writes into the same PTY: when you run
-`conda activate`, `psql`, or `python`, the agent sees the result on its next
-call, and whatever the agent writes shows up in the panel.
+terminal icon. Clicking it opens a real terminal in the right sidebar:
+xterm.js owns the keyboard, and there is no extra input line and no Send
+button. One tab is one Host session. Opening a tab spawns a shell immediately
+and attaches to that PTY; closing the tab stops its process tree, and when the
+shell exits on its own the tab closes itself after a moment. Clicking the
+header icon again focuses the tab already bound to the newest session instead
+of stacking a second view.
 
-The New button opens a session with `kind: user`; the agent can find it with
-`terminal_list` and continue with `terminal_send`. Ctrl-C, Esc, Tab, and the
-arrow keys sit at the bottom of the panel. The bridge listens on loopback only
-and checks the Host and Origin headers; the shell process runs with your own
-user permissions, the same as the sidebar's built-in terminal.
+A lease banner sits above the screen. While the agent holds control it reads
+"Agent is driving" and blocks keyboard input; press "Take control" to type, and
+"Hand back" to return it. A credential prompt turns the banner red and asks for
+your password, which never enters the model's context. The agent reads the same
+screen with `terminal_snapshot`, and whatever the agent writes appears here
+immediately.
+
+Keyboard input, clipboard, and resizing use the WebSocket attach stream.
+Selecting text copies it, Ctrl+Shift+V or a right click pastes with bracketed
+paste, and a window resize refits the terminal and sends the new size to the
+PTY. The shortcuts follow Ptyxis: Ctrl+Shift+T opens a tab, Ctrl+Shift+W closes
+it, Ctrl+Shift+C/V copy and paste, and Ctrl+=, Ctrl+-, Ctrl+0 zoom the font.
+
+The gear button opens a settings sheet: seven themes (Dark, Light, Solarized
+Dark and Light, Dracula, One Dark, GNOME, Tango, each with a full 16-color ANSI
+palette), font family, size, line height, weight, ligatures, cursor shape and
+blink, scrollback, bell, copy-on-select, right-click paste, and a shortcut table
+where every binding can be recorded again. Changes apply immediately and persist
+in localStorage, with a restores-defaults button at the bottom. The sheet is an
+overlay inside the terminal, never a modal dialog.
 
 The configuration card also gained a "default execution surface" choice.
 "Interactive terminal first" adds a system-prompt section that steers the
@@ -219,8 +235,12 @@ treat it as an example rather than a deployment.
   a version that changes only when the summary changes.
 - 🌐 A browser attach demo that shares one live session with xterm.js, read-only
   until a person takes over.
-- 🧪 Twenty-nine tests covering the screen model, session lifecycle, shell
-  integration, lease, secrets, audit, capsule, and tools.
+- 🖥️ A real terminal in the right sidebar: xterm.js over a WebSocket attach
+  stream, with themes, fonts, cursor, scrollback, bell, clipboard options, a
+  rebindable shortcut table, and a lease banner that separates "Agent is
+  driving" from "You have control".
+- 🧪 Forty-nine tests covering the screen model, session lifecycle, shell
+  integration, lease, secrets, audit, capsule, tools, and the attach stream.
 
 ## 🧩 The eight tools
 
@@ -295,10 +315,9 @@ right reason. M2 adds the shared session, the lease, and password handoff. M3
 polishes shell fidelity and multi-session context. [ROADMAP.md](ROADMAP.md) lists
 every item and every deliberate non-goal.
 
-Not yet implemented: harness-side attach wiring (the demo shows the protocol),
-redaction spans beyond the audit preview, idle session reclamation, a
-wake-on-pattern channel for an idle agent, fish integration, and Windows and
-macOS parity.
+Not yet implemented: redaction spans beyond the audit preview, idle session
+reclamation, a wake-on-pattern channel for an idle agent, fish integration, and
+Windows and macOS parity.
 
 ## 📚 Related work
 

@@ -9,14 +9,25 @@ interface SlotRegistration {
   id?: string
   locale?: string
   inject?: (sessionId: string) => Record<string, unknown>
+  component?: unknown
+}
+
+interface CloseHandler {
+  kind: string
+  run(sessionId: string, tab: { id: string; navigation?: { params?: Record<string, unknown> } }): void
 }
 
 interface Harness {
   inject: string[]
   slots: SlotRegistration[]
   tabs: Record<string, unknown>[]
-  opened: string[]
+  opened: { kind: string; options?: Record<string, unknown> }[]
+  focused: string[]
+  closed: string[]
+  closeHandlers: CloseHandler[]
   fetch: ReturnType<typeof vi.fn>
+  storage: Map<string, string>
+  openTabs: Record<string, unknown>[]
   apply(): void
 }
 
@@ -24,9 +35,9 @@ interface Harness {
  * Execute the browser half in a sandbox with just enough DOM and React to run
  * the registration code, then return what it registered.
  *
- * Components are never rendered, so the React stub only has to exist.
+ * Components render as plain descriptors; no DOM is involved.
  *
- * @returns the registered slots, tab types and recorded opens.
+ * @returns the registered slots, tab types and recorded navigation.
  */
 function loadClient(): Harness {
   const source = readFileSync(resolve(process.cwd(), 'client/index.js'), 'utf8')
@@ -35,12 +46,19 @@ function loadClient(): Harness {
     status: 200,
     json: async () => ({ sessions: [] }),
   }))
+  const storage = new Map<string, string>()
   const sandbox: Record<string, unknown> = {
     console,
     fetch: (...args: unknown[]) => fetchMock(...args),
   }
   const loaded: { module?: { factory(require: (id: string) => unknown): Record<string, unknown> } } = {}
   sandbox['window'] = {
+    location: { protocol: 'http:', host: '127.0.0.1:3080' },
+    localStorage: {
+      getItem: (key: string) => (storage.has(key) ? storage.get(key) : null),
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    },
     __ModuleLoader__: {
       load(module: { factory(require: (id: string) => unknown): Record<string, unknown> }): void {
         loaded.module = module
@@ -48,14 +66,19 @@ function loadClient(): Harness {
     },
   }
   sandbox['document'] = {
-    querySelector: () => null,
+    querySelector: () => ({}),
     createElement: () => ({ dataset: {}, textContent: '' }),
     head: { appendChild: () => undefined },
   }
   runInNewContext(source, sandbox)
 
   const reactStub = {
-    createElement: () => null,
+    createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({
+      type,
+      props: { ...(props as object), children: children.length === 1 ? children[0] : children },
+    }),
+    lazy: (factory: () => unknown) => ({ lazy: factory }),
+    Suspense: 'suspense',
     useState: (value: unknown) => [value, () => undefined],
     useEffect: () => undefined,
     useRef: (value: unknown) => ({ current: value }),
@@ -66,7 +89,11 @@ function loadClient(): Harness {
 
   const slots: SlotRegistration[] = []
   const tabs: Record<string, unknown>[] = []
-  const opened: string[] = []
+  const opened: { kind: string; options?: Record<string, unknown> }[] = []
+  const focused: string[] = []
+  const closed: string[] = []
+  const closeHandlers: CloseHandler[] = []
+  const openTabs: Record<string, unknown>[] = []
   const ctx = {
     effect(effect: () => unknown): void {
       effect()
@@ -79,8 +106,8 @@ function loadClient(): Harness {
       inject(_name: string, setup: () => unknown): void {
         setup()
       },
-      register(definition: SlotRegistration): () => void {
-        slots.push(definition)
+      register(definition: SlotRegistration, component?: unknown): () => void {
+        slots.push({ ...definition, component })
         return () => undefined
       },
     },
@@ -91,9 +118,23 @@ function loadClient(): Harness {
       },
     },
     sidebarRight: {
-      openTab(kind: string): void {
-        opened.push(kind)
+      openTabs: { getSnapshot: () => openTabs },
+      openTab(kind: string, options?: Record<string, unknown>): void {
+        opened.push({ kind, ...(options === undefined ? {} : { options }) })
       },
+      focus(tabId: string): void {
+        focused.push(tabId)
+      },
+      close(tabId: string): void {
+        closed.push(tabId)
+      },
+      registerCloseHandler(kind: string, run: CloseHandler['run']): () => void {
+        closeHandlers.push({ kind, run })
+        return () => undefined
+      },
+    },
+    require: {
+      async: () => Promise.resolve({ TerminalView: () => null }),
     },
   }
   return {
@@ -101,7 +142,12 @@ function loadClient(): Harness {
     slots,
     tabs,
     opened,
+    focused,
+    closed,
+    closeHandlers,
     fetch: fetchMock,
+    storage,
+    openTabs,
     apply(): void {
       ;(exports as { apply(ctx: unknown): void }).apply(ctx)
     },
@@ -109,46 +155,97 @@ function loadClient(): Harness {
 }
 
 describe('browser half', () => {
-  it('declares the services the three seats need', () => {
+  it('declares the services the seats need', () => {
     const client = loadClient()
     expect(client.inject).toEqual(['slots', 'locale', 'sidebarRight', 'sidebarRightTabs'])
   })
 
-  it('registers the config card, the shared tab and the header button', () => {
+  it('registers a multi-instance terminal tab, its body and title, and the header button', () => {
     const client = loadClient()
     client.apply()
     expect(client.slots.map((slot) => slot.name).sort()).toEqual([
       'conversation.session.header.utilities',
       'plugins.row.config',
       'sidebar.right.pane.tab',
+      'sidebar.right.pane.tab.title',
     ])
     expect(client.slots.find((slot) => slot.name === 'plugins.row.config')?.key).toBe(
       'agent-interactive-terminal#ait-terminal',
     )
     expect(client.tabs).toHaveLength(1)
     expect(client.tabs[0]?.['kind']).toBe('agent-terminal')
+    expect(client.tabs[0]?.['multiple']).toBe(true)
+    expect(client.closeHandlers).toHaveLength(1)
+    expect(client.closeHandlers[0]?.kind).toBe('agent-terminal')
   })
 
-  it('opens the shared tab from the header button', () => {
+  it('opens the newest live session from the header button', async () => {
     const client = loadClient()
     client.apply()
     const header = client.slots.find((slot) => slot.name === 'conversation.session.header.utilities')
     const props = header?.inject?.('session-1') as { openTerminal(): void }
+    client.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ sessions: [{ id: 's-live', name: 'demo' }] }),
+    })
     props.openTerminal()
-    expect(client.opened).toEqual(['agent-terminal'])
+    await vi.waitFor(() => {
+      expect(client.opened).toHaveLength(1)
+    })
+    expect(client.fetch).toHaveBeenCalledWith(
+      '/agent-terminal-bridge/state?sessionId=session-1',
+      expect.anything(),
+    )
+    expect(client.opened[0]).toEqual({
+      kind: 'agent-terminal',
+      options: { params: { id: 's-live', name: 'demo' } },
+    })
   })
 
-  it('binds the bridge calls to the session it was registered for', () => {
+  it('focuses the tab already bound to the newest session instead of opening another', async () => {
+    const client = loadClient()
+    client.apply()
+    client.storage.set('ait:tab:session-1:tab-9', JSON.stringify({ id: 's-live', name: 'demo' }))
+    client.openTabs.push({ sessionId: 'session-1', tabId: 'tab-9', kind: 'agent-terminal', contentId: 'x' })
+    const header = client.slots.find((slot) => slot.name === 'conversation.session.header.utilities')
+    client.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ sessions: [{ id: 's-live', name: 'demo' }] }),
+    })
+    ;(header?.inject?.('session-1') as { openTerminal(): void }).openTerminal()
+    await vi.waitFor(() => {
+      expect(client.focused).toEqual(['tab-9'])
+    })
+    expect(client.opened).toHaveLength(0)
+  })
+
+  it('renders the xterm body for the session bound by the tab params', () => {
     const client = loadClient()
     client.apply()
     const body = client.slots.find((slot) => slot.name === 'sidebar.right.pane.tab')
-    const props = body?.inject?.('session-1') as {
-      api: { state(): Promise<unknown>; screen(id: string): Promise<unknown>; open(c: number, r: number): Promise<unknown> }
+    const injected = body?.component as (props: Record<string, unknown>) => {
+      props: { children: { props: Record<string, unknown> } }
     }
-    void props.api.state()
-    expect(client.fetch).toHaveBeenCalledWith(
-      '/plugins/agent-interactive-terminal/state?sessionId=session-1',
-      expect.anything(),
-    )
+    const tree = injected({
+      ...(body?.inject?.('session-1') as Record<string, unknown>),
+      useTabInfo: () => ({ tab: { id: 'tab-1', navigation: { params: { id: 's-live', name: 'demo' } } } }),
+    })
+    expect(tree.props.children.props['terminalId']).toBe('s-live')
+    expect(tree.props.children.props['sessionId']).toBe('session-1')
+    expect((tree.props.children.props['labels'] as Record<string, string>)['takeover']).toBe('action.takeover')
+  })
+
+  it('terminates the bound session when the tab is closed', async () => {
+    const client = loadClient()
+    client.apply()
+    client.closeHandlers[0]?.run('session-1', { id: 'tab-1', navigation: { params: { id: 's-live' } } })
+    await vi.waitFor(() => {
+      expect(client.fetch).toHaveBeenCalledWith(
+        '/agent-terminal-bridge/close?sessionId=session-1',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ id: 's-live' }) }),
+      )
+    })
   })
 })

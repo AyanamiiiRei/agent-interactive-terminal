@@ -1,6 +1,6 @@
 {
   "name": "agent-interactive-terminal",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Stateful PTY terminal sessions for LLM agents: screen snapshots, key input, wait conditions, and a terminal a human and an agent can share.",
   "type": "module",
   "license": "MIT",
@@ -31,29 +31,32 @@
     "docs"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build:client && tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.examples.json --noEmit",
     "demo": "tsx src/cli/demo.ts",
     "attach": "tsx examples/browser/server.ts",
-    "prepack": "tsc -p tsconfig.json"
+    "prepack": "npm run build:client && tsc -p tsconfig.json",
+    "build:client": "node scripts/build-client.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.18.5",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.18.2",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
-    "ws": "^8.22.1"
+    "vitest": "^2.1.8"
   },
   "repository": {
     "type": "git",

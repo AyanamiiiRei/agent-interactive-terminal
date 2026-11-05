@@ -81,6 +81,8 @@ export declare class TerminalSession {
     get pid(): number;
     get cwd(): string;
     get revision(): number;
+    /** Exit status of the shell, when it has exited. */
+    get exitCode(): number | null;
     get size(): {
         cols: number;
         rows: number;

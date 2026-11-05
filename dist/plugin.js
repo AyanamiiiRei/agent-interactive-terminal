@@ -12,6 +12,7 @@
 import z from '@deepseek-ai/schemastery';
 import { accessSync, constants } from 'node:fs';
 import { join } from 'node:path';
+import { createAttachUpgrade } from './attach.js';
 import { createBridgeHandler } from './bridge.js';
 import { TerminalRegistry } from './session/registry.js';
 import { createTerminalTools } from './tools/index.js';
@@ -128,23 +129,34 @@ export function apply(ctx, config) {
         });
     };
     ctx.inject(['webServer', 'agents'], (host) => {
-        const handler = createBridgeHandler({
-            resolve: (sessionId) => {
-                const agent = host.agents.get(sessionId);
-                if (agent === undefined)
-                    return undefined;
-                const toolkit = toolkitFor(agent);
-                return {
-                    registry: toolkit.registry,
-                    open: (options) => openFromBridge(toolkit, options),
-                };
-            },
+        const resolve = (sessionId) => {
+            const agent = host.agents.get(sessionId);
+            if (agent === undefined)
+                return undefined;
+            const toolkit = toolkitFor(agent);
+            return {
+                registry: toolkit.registry,
+                open: (options) => openFromBridge(toolkit, options),
+            };
+        };
+        const handler = createBridgeHandler({ resolve });
+        const attach = createAttachUpgrade({ resolve });
+        host.effect(() => {
+            const disposeBridge = host.webServer.register({
+                kind: 'prefix',
+                path: '/agent-terminal-bridge',
+                handler,
+            });
+            const disposeAttach = host.webServer.registerUpgrade({
+                path: '/agent-terminal-bridge/attach',
+                handler: attach.handler,
+            });
+            return () => {
+                disposeAttach();
+                disposeBridge();
+                attach.dispose();
+            };
         });
-        host.effect(() => host.webServer.register({
-            kind: 'prefix',
-            path: '/plugins/agent-interactive-terminal',
-            handler,
-        }));
     });
     if (config.mode !== 'auto') {
         const guidance = config.mode === 'terminal'

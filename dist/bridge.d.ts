@@ -8,7 +8,7 @@
  * agent is immediately visible to the person, and a session opened from the
  * panel can be driven by the agent's tools by id.
  *
- * The routes live under `/plugins/agent-interactive-terminal` on the Host web
+ * The routes live under `/agent-terminal-bridge` on the Host web
  * server. They accept only loopback requests with the same-origin check the
  * other in-page plugins use, because the payload can type into a live shell.
  *
@@ -50,7 +50,7 @@ export declare function isLocalRequest(req: IncomingMessage): boolean;
  * the plugin registers it on the Host web server.
  *
  * @param deps - session resolution.
- * @returns an HTTP handler for every `/plugins/agent-interactive-terminal` path.
+ * @returns an HTTP handler for every `/agent-terminal-bridge` path.
  */
 export declare function createBridgeHandler(deps: BridgeDeps): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 //# sourceMappingURL=bridge.d.ts.map
