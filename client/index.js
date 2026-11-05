@@ -278,6 +278,8 @@ window.__ModuleLoader__.load({
     function AgentTerminalBody(props) {
       var api = props.api
       var t = props.t || function (key) { return (en[key] || key) }
+      var apiRef = React.useRef(api)
+      apiRef.current = api
       var sessionsState = React.useState([])
       var sessions = sessionsState[0]
       var setSessions = sessionsState[1]
@@ -299,7 +301,7 @@ window.__ModuleLoader__.load({
       var preRef = React.useRef(null)
 
       var refreshState = React.useCallback(function () {
-        return api.state().then(function (payload) {
+        return apiRef.current.state().then(function (payload) {
           setError(null)
           var list = Array.isArray(payload.sessions) ? payload.sessions : []
           setSessions(list)
@@ -310,20 +312,20 @@ window.__ModuleLoader__.load({
         }).catch(function (reason) {
           setError(reason instanceof Error ? reason.message : String(reason))
         })
-      }, [api])
+      }, [])
 
       var refreshScreen = React.useCallback(function (id) {
         if (id === null) {
           setScreen(null)
           return Promise.resolve()
         }
-        return api.screen(id).then(function (payload) {
+        return apiRef.current.screen(id).then(function (payload) {
           setError(null)
           setScreen(payload)
         }).catch(function (reason) {
           setError(reason instanceof Error ? reason.message : String(reason))
         })
-      }, [api])
+      }, [])
 
       React.useEffect(function () {
         refreshState()
