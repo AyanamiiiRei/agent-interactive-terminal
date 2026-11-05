@@ -57,7 +57,7 @@ Then search for `agent-interactive-terminal` and install it. You can also skip
 the market and paste the Git spec into Add plugin:
 
 ```bash
-git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#5149f9ddf206facb788a28108845e2e02da7bd96
+git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#d745557639a5457e65e6e81f4386ba48652d75e7
 ```
 
 The installer asks you to approve the `node-pty` build script, which compiles the
