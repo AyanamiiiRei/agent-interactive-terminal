@@ -98,14 +98,18 @@ paste, and a window resize refits the terminal and sends the new size to the
 PTY. The shortcuts follow Ptyxis: Ctrl+Shift+T opens a tab, Ctrl+Shift+W closes
 it, Ctrl+Shift+C/V copy and paste, and Ctrl+=, Ctrl+-, Ctrl+0 zoom the font.
 
-The gear button opens a settings sheet: seven themes (Dark, Light, Solarized
+The gear button opens a settings sheet with three groups, "Theme and font",
+"Cursor and behaviour", and "Shortcuts": seven themes (Dark, Light, Solarized
 Dark and Light, Dracula, One Dark, GNOME, Tango, each with a full 16-color ANSI
 palette), font family, size, line height, weight, ligatures, cursor shape and
 blink, scrollback, bell, copy-on-select, right-click paste, the idle delay after
 which control returns to the agent, and a shortcut table where every binding can
-be recorded again. Changes apply immediately and persist
-in localStorage, with a restores-defaults button at the bottom. The sheet is an
-overlay inside the terminal, never a modal dialog.
+be recorded again. Click a binding and press the new keys; Escape cancels the
+recording or closes the sheet. Changes apply immediately and persist in
+localStorage, with a restores-defaults button at the bottom. The sheet is an
+overlay inside the terminal, never a modal dialog. Before the shell attaches the
+panel shows a "Connecting" indicator, and a successful copy briefly shows a
+"Copied" toast at the bottom.
 
 The configuration card also gained a "default execution surface" choice.
 "Interactive terminal first" adds a system-prompt section that steers the
