@@ -64,7 +64,7 @@ export function createTerminalTools(
     {
       name: 'terminal_open',
       description:
-        'Open a persistent terminal session and return its id, a status line, and the initial screen. Use a session when state must survive across calls or a program needs interactive input; use one-shot execution for bounded commands.',
+        'Open a persistent terminal session and return its id, a status line, and the initial screen. Use a session when state must survive across calls or a program needs interactive input; use one-shot execution for bounded commands. In the DSH web interface the user can watch and type into every session from the right sidebar, so you share one screen with them.',
       parameters: {
         type: 'object',
         properties: {
