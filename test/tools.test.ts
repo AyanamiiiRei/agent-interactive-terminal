@@ -39,6 +39,33 @@ describe('tools', () => {
     ).rejects.toThrow(/no terminal session/)
   })
 
+  it('honours the access level the person set', async () => {
+    const open = await tools.get('terminal_open')!.execute({ name: 'access-test', shell: '/bin/bash' })
+    const id = /\[session: (\d+)\]/.exec(open.text)?.[1] as string
+    const session = registry.require(id)
+    try {
+      session.setAgentAccess('observe')
+      await expect(
+        tools.get('terminal_send')!.execute({ sessionId: id, text: 'echo hidden' }),
+      ).rejects.toMatchObject({ code: 'READ_ONLY' })
+      const snap = await tools.get('terminal_snapshot')!.execute({ sessionId: id })
+      expect(snap.text).toContain('| bash |')
+
+      session.setAgentAccess('sealed')
+      await expect(
+        tools.get('terminal_snapshot')!.execute({ sessionId: id }),
+      ).rejects.toMatchObject({ code: 'SEALED' })
+      const list = await tools.get('terminal_list')!.execute({})
+      expect(list.text).toContain(`${id} sealed`)
+      expect(list.text).not.toContain('access-test')
+      await expect(
+        tools.get('terminal_close')!.execute({ sessionId: id }),
+      ).rejects.toMatchObject({ code: 'SEALED' })
+    } finally {
+      await registry.close(id)
+    }
+  })
+
   it('enforces the session limit', async () => {
     const first = await tools.get('terminal_open')!.execute({ shell: '/bin/bash' })
     const second = await tools.get('terminal_open')!.execute({ shell: '/bin/bash' })

@@ -14,6 +14,7 @@ import type {
   OpenOptions,
   SessionPhase,
   TerminalView,
+  AgentAccess,
   WaitOutcome,
   WaitResult,
   WaitSpec,
@@ -116,6 +117,7 @@ export class TerminalSession {
   private agentCommandValue: string | undefined
   private agentCommandAtValue = 0
   private peekAtValue = 0
+  private agentAccessValue: AgentAccess = 'collaborate'
   private lastExitCode: number | null = null
   private lastExitSignal: number | null = null
   private pollTimer: NodeJS.Timeout | undefined
@@ -249,6 +251,30 @@ export class TerminalSession {
     return this.agentCommandAtValue
   }
 
+  /** How much of this session the agent may use. Only a person should set it. */
+  get agentAccess(): AgentAccess {
+    return this.agentAccessValue
+  }
+
+  /** Change the agent's access; sealed aborts reads and writes at once. */
+  setAgentAccess(next: AgentAccess): void {
+    this.assertUsable()
+    if (next !== 'collaborate' && next !== 'observe' && next !== 'sealed') {
+      throw new Error(`unknown access level: ${String(next)}`)
+    }
+    if (next === this.agentAccessValue) return
+    this.agentAccessValue = next
+    this.recordAudit({
+      at: Date.now(),
+      kind: 'access',
+      origin: 'human',
+      bytes: 0,
+      preview: '',
+      detail: next,
+    })
+    this.notify()
+  }
+
   /** When the agent last looked at this session, in epoch milliseconds. */
   get peekAt(): number {
     return this.peekAtValue
@@ -344,8 +370,11 @@ export class TerminalSession {
   ): Promise<void> {
     this.assertUsable()
     const origin = options.origin ?? 'agent'
-    if (origin === 'agent' && (this.leaseState.holder !== 'agent' || this.leaseState.suspended)) {
-      throw new SessionError('control is held by the user', 'LEASE_DENIED')
+    if (origin === 'agent') {
+      this.assertAgentMayWrite()
+      if (this.leaseState.holder !== 'agent' || this.leaseState.suspended) {
+        throw new SessionError('control is held by the user', 'LEASE_DENIED')
+      }
     }
 
     const submit = options.submit ?? true
@@ -389,6 +418,7 @@ export class TerminalSession {
   /** Deliver one named key, using a real signal where a person would send one. */
   async press(key: NamedKey, repeat = 1): Promise<void> {
     this.assertUsable()
+    this.assertAgentMayWrite()
     if (!Number.isInteger(repeat) || repeat < 1 || repeat > 50) {
       throw new Error('repeat must be an integer between 1 and 50')
     }
@@ -408,6 +438,7 @@ export class TerminalSession {
   /** Wait for one of several conditions. The first satisfied one settles. */
   async wait(spec: WaitSpec = {}, signal?: AbortSignal): Promise<WaitResult> {
     this.assertUsable()
+    this.assertAgentMayRead()
     const timeoutMs = clamp(spec.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1, MAX_TIMEOUT_MS)
     const settleOn = spec.settleOn ?? DEFAULT_SETTLE
     const started = Date.now()
@@ -456,6 +487,13 @@ export class TerminalSession {
         resolve(this.buildWaitResult(outcome, started))
       }
       const check = (): void => {
+        if (this.agentAccessValue === 'sealed') {
+          if (settled) return
+          settled = true
+          cleanup()
+          reject(new SessionError('the user has sealed this terminal from the agent', 'SEALED'))
+          return
+        }
         const outcome = evaluate()
         if (outcome) finish(outcome)
       }
@@ -477,6 +515,7 @@ export class TerminalSession {
   /** Read the current screen without writing anything. */
   snapshot(options: { sinceRevision?: number; maxRows?: number; mode?: 'auto' | 'screen' | 'output' } = {}): SnapshotResult {
     this.assertUsable()
+    this.assertAgentMayRead()
     const view = this.buildView(options.mode ?? 'auto', options)
     const cursor = this.screen.cursor()
     const result: SnapshotResult = {
@@ -730,6 +769,21 @@ export class TerminalSession {
     if (!TerminalSession.SECRET_PROMPT.test(last)) return
     this.leaseState = { holder: 'human', since: Date.now(), reason: 'secret-prompt', suspended: true }
     this.notify()
+  }
+
+  private assertAgentMayWrite(): void {
+    if (this.agentAccessValue === 'sealed') {
+      throw new SessionError('the user has sealed this terminal; ask them to reconnect it', 'SEALED')
+    }
+    if (this.agentAccessValue === 'observe') {
+      throw new SessionError('the user has made this terminal read-only', 'READ_ONLY')
+    }
+  }
+
+  private assertAgentMayRead(): void {
+    if (this.agentAccessValue === 'sealed') {
+      throw new SessionError('the user has sealed this terminal; ask them to reconnect it', 'SEALED')
+    }
   }
 
   private assertUsable(): void {

@@ -20,6 +20,7 @@ import type { Duplex } from 'node:stream'
 import { WebSocket, WebSocketServer } from 'ws'
 import { isLocalRequest } from './bridge.js'
 import type { BridgeDeps } from './bridge.js'
+import type { AgentAccess } from './types.js'
 import type { TerminalSession } from './session/session.js'
 
 /** What a text frame from the page may ask for. */
@@ -28,6 +29,7 @@ type ClientMessage =
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'takeover' }
   | { type: 'handback' }
+  | { type: 'access'; value: AgentAccess }
   | { type: 'ping' }
 
 /** One attach route: the upgrade handler plus a disposer for unload. */
@@ -91,6 +93,7 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
       command: session.agentCommand,
       commandAt: session.agentCommandAt,
       peekAt: session.peekAt,
+      access: session.agentAccess,
     })
     const broadcastStatus = (): void => {
       if (statusTimer !== undefined) return
@@ -163,6 +166,7 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
       rows: session.size.rows,
       phase: session.phase,
       lease: session.lease,
+      access: session.agentAccess,
       shell: session.statusLine(),
     })
     send({ type: 'snapshot', data: session.serialize() })
@@ -215,6 +219,19 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
             session.handBack()
           } catch {
             // The shell exited while the click was in flight.
+          }
+          return
+        }
+        case 'access': {
+          const value = message.value
+          if (value !== 'collaborate' && value !== 'observe' && value !== 'sealed') {
+            send({ type: 'denied', reason: 'unknown access level' })
+            return
+          }
+          try {
+            session.setAgentAccess(value)
+          } catch (error) {
+            send({ type: 'denied', reason: error instanceof Error ? error.message : String(error) })
           }
           return
         }

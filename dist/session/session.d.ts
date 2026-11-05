@@ -1,4 +1,4 @@
-import type { AuditEntry, NamedKey, OpenOptions, SessionPhase, TerminalView, WaitResult, WaitSpec, WriteOrigin } from '../types.js';
+import type { AuditEntry, NamedKey, OpenOptions, SessionPhase, TerminalView, AgentAccess, WaitResult, WaitSpec, WriteOrigin } from '../types.js';
 /** How a session starts. The id is minted by the registry. */
 export interface SessionInit extends OpenOptions {
     id: string;
@@ -54,6 +54,7 @@ export declare class TerminalSession {
     private agentCommandValue;
     private agentCommandAtValue;
     private peekAtValue;
+    private agentAccessValue;
     private lastExitCode;
     private lastExitSignal;
     private pollTimer;
@@ -95,6 +96,10 @@ export declare class TerminalSession {
     get agentCommand(): string | undefined;
     /** When that command was submitted, in epoch milliseconds. */
     get agentCommandAt(): number;
+    /** How much of this session the agent may use. Only a person should set it. */
+    get agentAccess(): AgentAccess;
+    /** Change the agent's access; sealed aborts reads and writes at once. */
+    setAgentAccess(next: AgentAccess): void;
     /** When the agent last looked at this session, in epoch milliseconds. */
     get peekAt(): number;
     /** Mark that the agent read the session, so the panel can show it looking. */
@@ -152,6 +157,8 @@ export declare class TerminalSession {
      * and followed by a prompt does not trigger it.
      */
     private detectSecretPrompt;
+    private assertAgentMayWrite;
+    private assertAgentMayRead;
     private assertUsable;
 }
 //# sourceMappingURL=session.d.ts.map

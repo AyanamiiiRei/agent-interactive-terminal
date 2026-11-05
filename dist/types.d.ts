@@ -62,7 +62,7 @@ export interface WaitResult {
 /** One recorded write or control action, for audit. */
 export interface AuditEntry {
     at: number;
-    kind: 'write' | 'lease';
+    kind: 'write' | 'lease' | 'access';
     origin: WriteOrigin;
     bytes: number;
     /** Single-line preview with control characters removed; empty when redacted. */
@@ -70,6 +70,8 @@ export interface AuditEntry {
     /** Why the entry exists, such as `takeover` or `redacted: secret prompt`. */
     detail?: string;
 }
+/** How much of a session the agent may use; the person owns the terminal. */
+export type AgentAccess = 'collaborate' | 'observe' | 'sealed';
 /** Options for opening a session. */
 export interface OpenOptions {
     /** Display name, unique within the registry when provided. */

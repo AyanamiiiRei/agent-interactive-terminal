@@ -1,9 +1,3 @@
-/**
- * Model-facing tool surface. Adapters can register these definitions with any
- * agent framework; nothing here depends on a particular runtime.
- *
- * @module agent-interactive-terminal/tools
- */
 import type { TerminalRegistry } from '../session/registry.js';
 import type { SessionPhase, WaitOutcome } from '../types.js';
 export interface JsonSchemaProperty {

@@ -260,7 +260,6 @@ const FONT_STACKS = [
 ]
 
 const STORAGE_KEY = 'ait:terminal-settings'
-const LOCK_PREFIX = 'ait:terminal-locked:'
 
 const DEFAULT_SETTINGS = {
   theme: 'dark',
@@ -375,25 +374,6 @@ function resetSettings() {
   for (const listener of settingsListeners) listener(cachedSettings)
 }
 
-/** Whether the person locked the keyboard for this terminal. */
-function readLock(terminalId) {
-  try {
-    return window.localStorage.getItem(LOCK_PREFIX + terminalId) === '1'
-  } catch {
-    return false
-  }
-}
-
-/** Persist the lock state for this terminal. */
-function writeLock(terminalId, locked) {
-  try {
-    if (locked) window.localStorage.setItem(LOCK_PREFIX + terminalId, '1')
-    else window.localStorage.removeItem(LOCK_PREFIX + terminalId)
-  } catch {
-    // Nothing to persist.
-  }
-}
-
 /** The terminal palette with the optional custom cursor color applied. */
 function themeFor(settings) {
   const base = paletteOf(settings.theme)
@@ -476,11 +456,12 @@ function comboLabel(combo) {
 }
 
 /** A short state label key for the status pill. */
-function uiState(status, locked, painted, typing, peeking) {
+function uiState(status, painted, typing, peeking) {
   if (!painted) return 'connecting'
   if (status.phase === 'exited') return 'exited'
+  if (status.access === 'sealed') return 'sealed'
   if (status.suspended) return 'secret'
-  if (locked) return 'locked'
+  if (status.access === 'observe') return 'observe'
   if (status.holder === 'human') return 'human'
   if (typing) return 'typing'
   if (peeking) return 'peeking'
@@ -494,6 +475,8 @@ const PANEL_CSS = `
 .ait-terminal[data-light="true"] .ait-state[data-state="typing"]{color:#8a5a00;background:color-mix(in srgb,#c18401 16%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="peeking"]{color:#075985;background:color-mix(in srgb,#0ea5e9 12%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="human"]{color:#166534;background:color-mix(in srgb,#22c55e 13%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="observe"]{color:#8a5a00;background:color-mix(in srgb,#c18401 13%,transparent)}
+.ait-terminal[data-light="true"] .ait-state[data-state="sealed"]{color:#9b1c1c;background:color-mix(in srgb,#d93025 11%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="secret"]{color:#b3261e;background:color-mix(in srgb,#d93025 13%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="exited"]{color:#8c4a4a;background:color-mix(in srgb,#a05050 11%,transparent)}
 .ait-terminal[data-light="true"] .ait-notice{color:#8a5a00;background:color-mix(in srgb,#c18401 10%,transparent)}
@@ -514,7 +497,8 @@ const PANEL_CSS = `
 .ait-state[data-state="human"]{color:#86efac;background:color-mix(in srgb,#86efac 13%,transparent);border-color:color-mix(in srgb,#86efac 20%,transparent)}
 .ait-state[data-state="secret"]{color:#ff9e9e;background:color-mix(in srgb,#ff7a7a 17%,transparent)}
 .ait-state[data-state="secret"] .dot{animation:ait-pulse 1.6s ease-in-out infinite}
-.ait-state[data-state="locked"]{color:var(--ait-muted);background:color-mix(in srgb,var(--ait-fg) 7%,transparent)}
+.ait-state[data-state="observe"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 13%,transparent);border-color:color-mix(in srgb,#e7c07d 20%,transparent)}
+.ait-state[data-state="sealed"]{color:#f0a1a1;background:color-mix(in srgb,#e05252 14%,transparent);border-color:color-mix(in srgb,#e05252 24%,transparent)}
 .ait-state[data-state="exited"]{color:#d99a9a;background:color-mix(in srgb,#d99a9a 12%,transparent)}
 .ait-state[data-state="connecting"]{color:var(--ait-muted);background:color-mix(in srgb,var(--ait-fg) 7%,transparent)}
 .ait-state[data-state="connecting"] .dot{animation:ait-pulse 1.4s ease-in-out infinite}
@@ -536,6 +520,12 @@ const PANEL_CSS = `
 .ait-secret:hover{background:color-mix(in srgb,#ffb86b 14%,transparent)}
 .ait-secret-dot{width:7px;height:7px;border-radius:50%;background:#ffb86b;box-shadow:0 0 0 0 color-mix(in srgb,#ffb86b 45%,transparent);animation:ait-pulse 1.8s ease-in-out infinite;flex:none}
 .ait-secret-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-sealed{display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px;border:0;border-bottom:1px solid color-mix(in srgb,#e05252 26%,transparent);background:color-mix(in srgb,#e05252 11%,transparent);color:#f2b3b3;font-size:11.5px;text-align:left;cursor:pointer;flex:none;animation:ait-fade-in .18s ease}
+.ait-sealed:hover{background:color-mix(in srgb,#e05252 16%,transparent)}
+.ait-sealed-dot{width:7px;height:7px;border-radius:50%;background:#e05252;box-shadow:0 0 0 3px color-mix(in srgb,#e05252 18%,transparent);flex:none}
+.ait-sealed-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-terminal[data-sealed="true"] .ait-host{border-color:color-mix(in srgb,#e05252 38%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 0 0 1px color-mix(in srgb,#e05252 12%,transparent)}
+.ait-terminal[data-light="true"] .ait-sealed{color:#8f1d1d;background:color-mix(in srgb,#d93025 8%,transparent);border-bottom-color:color-mix(in srgb,#d93025 20%,transparent)}
 .ait-terminal[data-light="true"] .ait-secret{color:#8a4b00;background:color-mix(in srgb,#c18401 9%,transparent);border-bottom-color:color-mix(in srgb,#c18401 20%,transparent)}
 .ait-terminal[data-light="true"] .ait-secret:hover{background:color-mix(in srgb,#c18401 14%,transparent)}
 .ait-terminal[data-agent="true"] .ait-bar::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,transparent 18%,color-mix(in srgb,var(--ait-accent) 26%,transparent) 44%,transparent 70%);background-size:220% 100%;animation:ait-sweep 1.5s linear infinite;z-index:0}
@@ -627,6 +617,7 @@ const PANEL_CSS = `
   .ait-state[data-state="typing"] .dot,.ait-state[data-state="peeking"] .dot,.ait-state[data-state="secret"] .dot,.ait-state[data-state="connecting"] .dot{animation:none}
   .ait-terminal[data-agent="true"] .ait-bar::after{animation:none;background:none}
   .ait-secret-dot{animation:none}
+  .ait-sealed-dot{animation:none}
   .ait-state-text,.ait-sheet,.ait-tab-body,.ait-toast,.ait-notice,.ait-icon{animation:none;transition:none}
   .ait-idle{animation:none!important;opacity:.3}
   .ait-spinner{animation:none;border-top-color:var(--ait-accent);opacity:.7}
@@ -712,6 +703,35 @@ function LockIcon(open) {
   )
 }
 
+/** A plug; `pulled` shows the cable disconnected for the sealed state. */
+function PlugIcon(pulled) {
+  return React.createElement(
+    'svg',
+    { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('path', {
+      d: 'M5.1 2.4v3.1M10.9 2.4v3.1',
+      stroke: 'currentColor',
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+    }),
+    React.createElement('rect', {
+      x: 3.4,
+      y: 5.6,
+      width: 9.2,
+      height: 3.6,
+      rx: 1.2,
+      stroke: 'currentColor',
+      strokeWidth: 1.5,
+    }),
+    React.createElement('path', {
+      d: pulled ? 'M8 9.2v1.1M8 13.2l-1.3 1M8 13.2l1.3 1' : 'M8 9.2v4.4',
+      stroke: 'currentColor',
+      strokeWidth: 1.5,
+      strokeLinecap: 'round',
+    }),
+  )
+}
+
 /** A check for the selected theme swatch. */
 function CheckIcon() {
   return React.createElement(
@@ -783,7 +803,6 @@ export function TerminalView(props) {
   const onCloseRef = React.useRef(onCloseTab)
   const onNewRef = React.useRef(onNewTab)
   const settingsRef = React.useRef(null)
-  const lockedRef = React.useRef(readLock(terminalId))
   labelsRef.current = labels
   onCloseRef.current = onCloseTab
   onNewRef.current = onNewTab
@@ -798,6 +817,7 @@ export function TerminalView(props) {
     command: '',
     commandAt: 0,
     peekAt: 0,
+    access: 'collaborate',
   })
   const [agentPulse, setAgentPulse] = React.useState(false)
   const [peekPulse, setPeekPulse] = React.useState(false)
@@ -808,14 +828,12 @@ export function TerminalView(props) {
   const [notice, setNotice] = React.useState(null)
   const [settings, setSettings] = React.useState(() => currentSettings())
   const [panelOpen, setPanelOpen] = React.useState(false)
-  const [locked, setLocked] = React.useState(lockedRef.current)
   const [zoom, setZoom] = React.useState(0)
   const [inputEpoch, setInputEpoch] = React.useState(0)
   const [flash, setFlash] = React.useState(false)
   const [painted, setPainted] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
   settingsRef.current = settings
-  lockedRef.current = locked
 
   React.useEffect(() => {
     injectCss()
@@ -834,7 +852,6 @@ export function TerminalView(props) {
     let fitTimer = 0
     let exitTimer = 0
     let bellTimer = 0
-    let lockHintAt = 0
     let exited = false
     const initial = settingsRef.current !== null ? settingsRef.current : currentSettings()
 
@@ -885,6 +902,7 @@ export function TerminalView(props) {
       const command = typeof message.command === 'string' ? message.command : ''
       const commandAt = typeof message.commandAt === 'number' ? message.commandAt : 0
       const peekAt = typeof message.peekAt === 'number' ? message.peekAt : 0
+      const access = message.access === 'observe' || message.access === 'sealed' ? message.access : 'collaborate'
       const next = {
         phase: message.phase || 'running',
         holder: (message.lease && message.lease.holder) || 'agent',
@@ -895,6 +913,7 @@ export function TerminalView(props) {
         command,
         commandAt,
         peekAt,
+        access,
       }
       setStatus(next)
       writableRef.current = next.holder === 'human'
@@ -997,22 +1016,10 @@ export function TerminalView(props) {
       }
     }
 
-    const showLockHint = () => {
-      const now = Date.now()
-      if (now - lockHintAt < 2500) return
-      lockHintAt = now
-      setNotice(labelsRef.current.lockHint)
-      window.setTimeout(() => setNotice(null), 1800)
-    }
-
     // A keystroke takes the keyboard, not a click. The local view becomes
     // writable immediately; the server's lease confirmation arrives soon after
     // and the write that follows is processed in order behind the takeover.
     term.onData((data) => {
-      if (lockedRef.current) {
-        showLockHint()
-        return
-      }
       if (!writableRef.current) {
         send({ type: 'takeover' })
         writableRef.current = true
@@ -1183,7 +1190,7 @@ export function TerminalView(props) {
   // restarts this timer; when it fires the lease goes back to the agent and the
   // countdown line disappears with the next status message.
   React.useEffect(() => {
-    if (locked || status.phase === 'exited' || status.holder !== 'human' || status.suspended) return undefined
+    if (status.access !== 'collaborate' || status.phase === 'exited' || status.holder !== 'human' || status.suspended) return undefined
     const ms = Math.max(1, settings.idleHandback) * 1000
     const timer = window.setTimeout(() => {
       send({ type: 'handback' })
@@ -1191,7 +1198,7 @@ export function TerminalView(props) {
     return () => window.clearTimeout(timer)
     // send is stable through the ref-backed socket.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status.holder, status.suspended, status.phase, locked, settings.idleHandback, inputEpoch])
+  }, [status.holder, status.suspended, status.phase, status.access, settings.idleHandback, inputEpoch])
 
   React.useEffect(() => {
     if (!copied) return undefined
@@ -1204,14 +1211,17 @@ export function TerminalView(props) {
     if (term !== null) term.focus()
   }
 
-  const toggleLock = () => {
-    const next = !locked
-    setLocked(next)
-    writeLock(terminalId, next)
-    if (next) send({ type: 'handback' })
-    // Clicking the lock must not leave the keyboard on the button: the next
-    // natural gesture is to type into the terminal again.
+  const setAccess = (value) => {
+    send({ type: 'access', value })
     focusTerminal()
+  }
+
+  const toggleObserve = () => {
+    setAccess(status.access === 'observe' ? 'collaborate' : 'observe')
+  }
+
+  const toggleSeal = () => {
+    setAccess(status.access === 'sealed' ? 'collaborate' : 'sealed')
   }
 
   const closePanel = () => {
@@ -1219,14 +1229,18 @@ export function TerminalView(props) {
     focusTerminal()
   }
 
-  const state = uiState(status, locked, painted, agentPulse, peekPulse)
+  const state = uiState(status, painted, agentPulse, peekPulse)
+  const readOnly = status.access === 'observe'
+  const sealed = status.access === 'sealed'
   const bannerText =
     state === 'exited'
       ? labels.exited
       : state === 'secret'
         ? labels.secret
-        : state === 'locked'
-          ? labels.locked
+        : state === 'observe'
+          ? labels.observe
+          : state === 'sealed'
+            ? labels.sealed
           : state === 'connecting'
             ? labels.connecting
             : state === 'human'
@@ -1240,7 +1254,8 @@ export function TerminalView(props) {
   const palette = paletteOf(settings.theme)
   const size = Math.min(28, Math.max(8, settings.fontSize + zoom))
   const countdownMs = Math.max(1, settings.idleHandback) * 1000
-  const showCountdown = !locked && !status.suspended && status.phase !== 'exited' && status.holder === 'human'
+  const showCountdown =
+    status.access === 'collaborate' && !status.suspended && status.phase !== 'exited' && status.holder === 'human'
 
   const style = {
     '--ait-bg': palette.background,
@@ -1258,6 +1273,7 @@ export function TerminalView(props) {
       className: 'ait-terminal',
       'data-light': chrome.light ? 'true' : 'false',
       'data-agent': agentPulse ? 'true' : 'false',
+      'data-sealed': sealed ? 'true' : 'false',
       style,
       onKeyDown: (event) => {
         if (event.key !== 'Escape' || !panelOpen) return
@@ -1292,17 +1308,29 @@ export function TerminalView(props) {
           {
             className: 'ait-icon',
             type: 'button',
-            'data-tip': locked ? labels.unlock : labels.lock,
-            'aria-label': locked ? labels.unlock : labels.lock,
-            'data-on': locked ? 'true' : 'false',
+            'data-tip': readOnly ? labels.unlock : labels.lock,
+            'aria-label': readOnly ? labels.unlock : labels.lock,
+            'data-on': readOnly ? 'true' : 'false',
             'data-flash': flash ? 'true' : 'false',
             onClick: () => {
-              toggleLock()
+              toggleObserve()
               setFlash(true)
               window.setTimeout(() => setFlash(false), 500)
             },
           },
-          LockIcon(locked),
+          LockIcon(readOnly),
+        ),
+        React.createElement(
+          'button',
+          {
+            className: 'ait-icon',
+            type: 'button',
+            'data-tip': sealed ? labels.unseal : labels.seal,
+            'aria-label': sealed ? labels.unseal : labels.seal,
+            'data-on': sealed ? 'true' : 'false',
+            onClick: toggleSeal,
+          },
+          PlugIcon(sealed),
         ),
         React.createElement(
           'button',
@@ -1317,7 +1345,7 @@ export function TerminalView(props) {
         ),
       ),
     ),
-    status.command !== '' && !locked && !status.suspended && status.phase !== 'exited'
+    status.command !== '' && !readOnly && !sealed && !status.suspended && status.phase !== 'exited'
       ? React.createElement(
           'div',
           { className: 'ait-cmd', title: status.command },
@@ -1331,6 +1359,14 @@ export function TerminalView(props) {
           { type: 'button', className: 'ait-secret', onClick: focusTerminal },
           React.createElement('span', { className: 'ait-secret-dot' }),
           React.createElement('span', { className: 'ait-secret-text' }, labels.secretHint),
+        )
+      : null,
+    sealed
+      ? React.createElement(
+          'button',
+          { type: 'button', className: 'ait-sealed', onClick: toggleSeal },
+          React.createElement('span', { className: 'ait-sealed-dot' }),
+          React.createElement('span', { className: 'ait-sealed-text' }, labels.sealedHint),
         )
       : null,
     notice === null ? null : React.createElement('div', { className: 'ait-notice' }, notice),

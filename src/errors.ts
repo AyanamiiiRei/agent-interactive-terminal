@@ -2,7 +2,13 @@
  * Machine-routable session failures.
  * @module agent-interactive-terminal/errors
  */
-export type SessionErrorCode = 'NO_SESSION' | 'LEASE_DENIED' | 'CLOSED' | 'SPAWN_FAILED'
+export type SessionErrorCode =
+  | 'NO_SESSION'
+  | 'LEASE_DENIED'
+  | 'READ_ONLY'
+  | 'SEALED'
+  | 'CLOSED'
+  | 'SPAWN_FAILED'
 
 export class SessionError extends Error {
   readonly code: SessionErrorCode

@@ -53,6 +53,7 @@ export function createAttachUpgrade(deps) {
             command: session.agentCommand,
             commandAt: session.agentCommandAt,
             peekAt: session.peekAt,
+            access: session.agentAccess,
         });
         const broadcastStatus = () => {
             if (statusTimer !== undefined)
@@ -128,6 +129,7 @@ export function createAttachUpgrade(deps) {
             rows: session.size.rows,
             phase: session.phase,
             lease: session.lease,
+            access: session.agentAccess,
             shell: session.statusLine(),
         });
         send({ type: 'snapshot', data: session.serialize() });
@@ -185,6 +187,20 @@ export function createAttachUpgrade(deps) {
                     }
                     catch {
                         // The shell exited while the click was in flight.
+                    }
+                    return;
+                }
+                case 'access': {
+                    const value = message.value;
+                    if (value !== 'collaborate' && value !== 'observe' && value !== 'sealed') {
+                        send({ type: 'denied', reason: 'unknown access level' });
+                        return;
+                    }
+                    try {
+                        session.setAgentAccess(value);
+                    }
+                    catch (error) {
+                        send({ type: 'denied', reason: error instanceof Error ? error.message : String(error) });
                     }
                     return;
                 }

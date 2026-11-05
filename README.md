@@ -185,6 +185,25 @@ const session = await sessions.open({
 })
 ```
 
+### 🔐 访问级别
+
+人拥有终端，智能体只是访客。“看得见”和“动得了”是两项独立的授权，由人在面板上
+随时切换：
+
+| 级别 | 智能体能读 | 智能体能写 | 适用场景 |
+| --- | --- | --- | --- |
+| `collaborate` | 能 | 能，受租约仲裁 | 默认，一起干活 |
+| `observe` | 能 | 不能 | 人刚接手，不希望智能体插话 |
+| `sealed` | 不能 | 不能 | 完全断开智能体，连内容都不让它看 |
+
+```ts
+session.setAgentAccess('observe')  // 只读：读取照常，写入得到 READ_ONLY
+session.setAgentAccess('sealed')   // 隔离：读写都得到 SEALED，列表里只剩一条脱敏记录
+```
+
+隔离会立刻中止正在进行的 `wait`，之后的输出不会再交给智能体。已经进入它上下文
+的内容无法收回，这是这个模型必须诚实对待的边界。
+
 ### 🌐 浏览器接入
 
 `npm run attach` 会启动一个本地演示：用 xterm.js 和 WebSocket 把同一条会话渲染

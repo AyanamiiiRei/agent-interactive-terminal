@@ -173,6 +173,7 @@ export function apply(ctx, config) {
                 '- The user can watch and type into every session in the right sidebar, so treat it as a shared workspace and close sessions you no longer need.',
                 '- Before each terminal_send or terminal_key that submits something, write one short sentence in the conversation saying what you are about to run; when a command asks Y or N, say which answer you are giving. Do not narrate every line of output.',
                 '- For privileges in an interactive terminal use sudo, never pkexec. When a password prompt is visible the terminal suspends your control so the user can type the password; do not try to type it yourself.',
+                '- The person can make a terminal read-only or seal it. READ_ONLY means you may look but not type; SEALED means you can neither look nor type. Say so in one sentence and wait for the person, do not retry or open a replacement to get around it.',
                 '- Package-manager upgrades, builds and large downloads can take many minutes. Start them, then leave them alone and tell the user you will report back. Check at most once every five minutes, and never interrupt a slow or quiet command just because it is taking long.',
             ].join('\n'),
         }));

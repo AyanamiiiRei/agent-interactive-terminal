@@ -4,9 +4,21 @@
  *
  * @module agent-interactive-terminal/tools
  */
+import { SessionError } from '../errors.js'
 import type { TerminalRegistry } from '../session/registry.js'
+import type { TerminalSession } from '../session/session.js'
 import type { SessionPhase, TerminalView, WaitOutcome } from '../types.js'
 import type { NamedKey } from '../types.js'
+
+/** Refuse an administrative action when the person has limited the agent. */
+function assertAgentCanWrite(session: TerminalSession): void {
+  if (session.agentAccess === 'sealed') {
+    throw new SessionError('the user has sealed this terminal; ask them to reconnect it', 'SEALED')
+  }
+  if (session.agentAccess === 'observe') {
+    throw new SessionError('the user has made this terminal read-only', 'READ_ONLY')
+  }
+}
 
 export interface JsonSchemaProperty {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object'
@@ -275,6 +287,7 @@ export function createTerminalTools(
       },
       async execute(input) {
         const session = registry.require(requiredString(input, 'sessionId'))
+        assertAgentCanWrite(session)
         const cols = requiredInteger(input, 'cols')
         const rows = requiredInteger(input, 'rows')
         session.resize(cols, rows)
@@ -293,6 +306,8 @@ export function createTerminalTools(
       },
       async execute(input) {
         const id = requiredString(input, 'sessionId')
+        const session = registry.require(id)
+        assertAgentCanWrite(session)
         const closed = await registry.close(id)
         return { text: closed ? `[closed: ${id}]` : `[already closed: ${id}]` }
       },
@@ -305,6 +320,7 @@ export function createTerminalTools(
         const sessions = registry.list()
         if (sessions.length === 0) return { text: '(no terminal sessions)' }
         const lines = sessions.map((session) => {
+          if (session.agentAccess === 'sealed') return `${session.id} sealed (hidden by the user)`
           const name = session.name ? ` (${session.name})` : ''
           const size = session.size
           return `${session.id}${name} ${session.phase} ${size.cols}x${size.rows}`
