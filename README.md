@@ -55,7 +55,8 @@ git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#87ff10ed19b09
 安装时会提示批准 `node-pty` 的构建脚本，同意之后才会编译出原生模块。插件市场
 本身是 DSH 的实验性 bundle，第一次启用需要重启 DSH；终端插件是普通的 bundle
 行，装好之后由 loader 加载。配置卡里改的 shell 只影响之后新开的会话，已经
-打开的会话保持原来的 shell。
+打开的会话保持原来的 shell。从旧版本升级到 0.3.0 之后要重启一次 DSH：attach 的
+WebSocket 路由在 Host 启动时注册，浏览器半边的 chunk 也在启动时进入模块表。
 
 ### 🖥️ 共享终端面板
 

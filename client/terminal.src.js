@@ -828,7 +828,9 @@ export function TerminalView(props) {
         if (onCloseRef.current) onCloseRef.current()
         return false
       }
-      if (combo === shortcuts.fontIncrease) {
+      // A US layout types Ctrl+Plus as Ctrl+Shift+Equal; treat it as the same
+      // gesture so the Ptyxis shortcut works without rebinding.
+      if (combo === shortcuts.fontIncrease || (shortcuts.fontIncrease === 'ctrl+=' && combo === 'ctrl+shift+=')) {
         setZoom((value) => Math.min(15, value + 1))
         return false
       }

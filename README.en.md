@@ -64,7 +64,9 @@ The installer asks you to approve the `node-pty` build script, which compiles th
 native module. The plugin market itself is an experimental DSH bundle and needs a
 DSH restart the first time it is enabled; the terminal plugin is an ordinary bundle row and
 is loaded by the loader. Changing the shell in the configuration card affects
-only sessions opened afterwards; existing sessions keep their shell.
+only sessions opened afterwards; existing sessions keep their shell. After
+upgrading to 0.3.0, restart DSH once: the attach WebSocket route is registered at
+Host startup, and the browser chunk enters the module table at startup too.
 
 ### 🖥️ The shared terminal panel
 
