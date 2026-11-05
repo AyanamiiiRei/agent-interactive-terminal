@@ -40,10 +40,10 @@ window.__ModuleLoader__.load({
       'mode.auto': 'Auto (model decides)',
       'mode.terminal': 'Interactive terminal first',
       'mode.exec': 'One-shot commands first',
-      'tab.title': 'Terminal',
+      'tab.title': 'Interactive Terminal',
       'tab.guide.title': 'New terminal',
       'tab.guide.description': 'Open a shell in the right sidebar, shared with the agent.',
-      open: 'Open terminal',
+      open: 'Open interactive terminal',
       'state.agent': 'Agent is driving',
       'state.human': 'You have control',
       'state.ready': 'Agent ready',
@@ -52,14 +52,14 @@ window.__ModuleLoader__.load({
       'state.secretHint': 'The terminal is waiting for your password. Click here, then type it in the terminal.',
       'tag.agent': 'Agent',
       'state.exited': 'Process exited',
-      'state.observe': 'Read-only',
-      'state.sealed': 'Agent cut off',
-      'state.sealedHint': 'The agent can no longer see or type here. Click the plug to reconnect it.',
+      'state.observe': 'Agent read-only',
+      'state.sealed': 'Agent disconnected',
       'state.connecting': 'Connecting',
       'action.lock': 'Make read-only for the agent',
       'action.unlock': 'Let the agent type again',
-      'action.seal': 'Cut the agent off',
+      'action.seal': 'Disconnect the agent',
       'action.unseal': 'Reconnect the agent',
+      'action.newTerminal': 'New terminal',
       'action.settings': 'Terminal settings',
       'hint.reconnecting': 'Connection lost, reconnecting…',
       'hint.disconnected': 'Connection lost. Close the tab and open the terminal again.',
@@ -69,7 +69,7 @@ window.__ModuleLoader__.load({
       'starting': 'Starting a shell…',
       'gone': 'This terminal session has ended.',
       'openFailed': 'Could not open a terminal for this session.',
-      'closeTab': 'Close tab',
+      'closeTab': 'Close terminal',
     }
     var zh = {
       title: '默认 shell',
@@ -86,10 +86,10 @@ window.__ModuleLoader__.load({
       'mode.auto': '自动（由模型决定）',
       'mode.terminal': '优先交互式终端',
       'mode.exec': '优先一次性命令',
-      'tab.title': '终端',
+      'tab.title': '交互式终端',
       'tab.guide.title': '新建终端',
       'tab.guide.description': '在右侧边栏打开一个与 agent 共享的 shell。',
-      open: '打开终端',
+      open: '打开交互式终端',
       'state.agent': 'Agent 正在操作',
       'state.human': '你已接管',
       'state.ready': 'Agent 可操作',
@@ -98,14 +98,14 @@ window.__ModuleLoader__.load({
       'state.secretHint': '终端正在等待你输入密码。点这里把光标放到终端，然后输入密码。',
       'tag.agent': 'Agent',
       'state.exited': '进程已退出',
-      'state.observe': '只读',
-      'state.sealed': '已隔离',
-      'state.sealedHint': 'agent 已经看不到也动不了这个终端。点插头可以恢复连接。',
+      'state.observe': 'Agent 只读',
+      'state.sealed': 'Agent 已断开',
       'state.connecting': '正在连接',
       'action.lock': '设为只读，不让 agent 输入',
       'action.unlock': '恢复让 agent 输入',
       'action.seal': '断开 agent',
       'action.unseal': '恢复 agent 连接',
+      'action.newTerminal': '新建终端',
       'action.settings': '终端设置',
       'hint.reconnecting': '连接中断，正在重连…',
       'hint.disconnected': '连接已断开，请关掉标签页重新打开终端。',
@@ -115,7 +115,7 @@ window.__ModuleLoader__.load({
       'starting': '正在启动 shell…',
       'gone': '这个终端会话已经结束。',
       'openFailed': '无法为这个会话打开终端。',
-      'closeTab': '关闭标签页',
+      'closeTab': '关闭终端',
     }
 
     var selectStyle = {
@@ -131,7 +131,7 @@ window.__ModuleLoader__.load({
 
     var LazyTerminal = React.lazy(function () {
       return require.async('./client.terminal.js').then(function (loaded) {
-        return { default: loaded.TerminalView }
+        return { default: loaded.TerminalPanel }
       })
     })
 
@@ -271,62 +271,6 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function bindingKey(sessionId, tabId) {
-      return 'ait:tab:' + sessionId + ':' + tabId
-    }
-
-    function readBinding(sessionId, tabId) {
-      try {
-        var raw = window.localStorage.getItem(bindingKey(sessionId, tabId))
-        if (!raw) return null
-        var parsed = JSON.parse(raw)
-        return parsed && typeof parsed.id === 'string' ? parsed : null
-      } catch (error) {
-        return null
-      }
-    }
-
-    function writeBinding(sessionId, tabId, value) {
-      try {
-        window.localStorage.setItem(bindingKey(sessionId, tabId), JSON.stringify(value))
-      } catch (error) {
-        // Private-mode storage can refuse writes; the navigation params still work.
-      }
-    }
-
-    function clearBinding(sessionId, tabId) {
-      try {
-        window.localStorage.removeItem(bindingKey(sessionId, tabId))
-      } catch (error) {
-        // Nothing to do.
-      }
-    }
-
-    function humanName(name) {
-      if (typeof name !== 'string' || name.trim() === '') return null
-      if (/^s-[0-9a-f]{4,}/i.test(name)) return null
-      if (/^\d+$/.test(name)) return null
-      return name
-    }
-
-    function terminalLabel(t, id) {
-      return /^\d+$/.test(id) ? t('tab.title') + ' ' + id : t('tab.title')
-    }
-
-    function takeParams(tab, props) {
-      var params = tab && tab.navigation && tab.navigation.params
-      if (!params && props.navigation) params = props.navigation.params
-      return params && typeof params === 'object' ? params : null
-    }
-
-    function useTabRecord(props) {
-      if (typeof props.useTabInfo === 'function') {
-        var info = props.useTabInfo()
-        if (info && info.tab) return info.tab
-      }
-      return props.tab || null
-    }
-
     function labelsFor(t) {
       return {
         agent: t('state.agent'),
@@ -339,123 +283,47 @@ window.__ModuleLoader__.load({
         exited: t('state.exited'),
         observe: t('state.observe'),
         sealed: t('state.sealed'),
-        sealedHint: t('state.sealedHint'),
-        connecting: t('state.connecting'),
-        connectingHint: t('hint.connecting'),
-        copied: t('hint.copied'),
+        newTerminal: t('action.newTerminal'),
         settings: t('action.settings'),
         lock: t('action.lock'),
         unlock: t('action.unlock'),
         seal: t('action.seal'),
         unseal: t('action.unseal'),
+        connecting: t('state.connecting'),
+        connectingHint: t('hint.connecting'),
+        copied: t('hint.copied'),
+        denied: t('hint.denied'),
         reconnecting: t('hint.reconnecting'),
         disconnected: t('hint.disconnected'),
-        denied: t('hint.denied'),
       }
     }
 
-    /**
-     * One terminal tab: resolve the session it is bound to, attaching
-     * immediately, and spawn a shell when the tab was opened without one.
-     */
+    /** The panel host: one page, with a strip of live sessions inside it. */
     function TerminalBody(props) {
       var t = props.t || function (key) { return (en[key] || key) }
       var sessionId = props.dshSessionId
-      var tab = useTabRecord(props)
-      var tabId = tab && tab.id ? tab.id : props.tabId
-      var params = takeParams(tab, props)
-      var initial = params && typeof params.id === 'string' ? { id: params.id, name: params.name || params.id } : null
-      var bound = React.useRef(initial || (tabId ? readBinding(sessionId, tabId) : null))
-      var errorState = React.useState(null)
-      var error = errorState[0]
-      var setError = errorState[1]
-      var targetState = React.useState(bound.current)
-      var target = targetState[0]
-      var setTarget = targetState[1]
-
-      React.useEffect(function () {
-        if (target !== null || sessionId === undefined) return undefined
-        var alive = true
-        apiFor(sessionId).open(120, 30).then(function (created) {
-          if (!alive) return
-          var next = { id: created.id, name: created.name || created.id }
-          if (tabId) writeBinding(sessionId, tabId, next)
-          setTarget(next)
-        }).catch(function (reason) {
-          if (!alive) return
-          setError(reason instanceof Error ? reason.message : String(reason))
-        })
-        return function () { alive = false }
-      }, [target, sessionId, tabId])
-
-      React.useEffect(function () {
-        if (target !== null && tabId && sessionId !== undefined) writeBinding(sessionId, tabId, target)
-      }, [target, tabId, sessionId])
-
-      // A restored tab may point at a shell that no longer exists. Only a fresh
-      // spawn (params) is guaranteed to be alive; everything else is checked
-      // once and the tab is closed when the Host no longer knows the session.
-      React.useEffect(function () {
-        if (target === null || sessionId === undefined) return undefined
-        if (params && params.id === target.id) return undefined
-        if (!props.closeTab || !tabId) return undefined
-        var alive = true
-        apiFor(sessionId).state().then(function (payload) {
-          if (!alive) return
-          var sessions = Array.isArray(payload.sessions) ? payload.sessions : []
-          var found = sessions.some(function (session) { return session.id === target.id })
-          if (!found) props.closeTab(tabId)
-        }).catch(function () {
-          // The bridge being unreachable is not evidence the session is gone.
-        })
-        return function () { alive = false }
-      }, [])
-
-      function closeThisTab() {
-        if (props.closeTab && tabId) props.closeTab(tabId)
-      }
-
-      if (error !== null) {
-        return React.createElement(
-          'section',
-          { style: { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } },
-          React.createElement('div', null, t('openFailed')),
-          React.createElement('div', { style: { color: 'var(--dsw-alias-state-error-primary)' } }, error),
-          React.createElement('button', { type: 'button', onClick: closeThisTab, style: { alignSelf: 'flex-start', height: 26, padding: '0 10px', borderRadius: 6, border: '0.5px solid var(--dsw-alias-border-l4)', background: 'transparent', color: 'inherit', cursor: 'pointer' } }, t('closeTab')),
-        )
-      }
-
-      if (target === null) {
-        return React.createElement('section', { style: { padding: 16, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } }, t('starting'))
-      }
-
+      var api = React.useMemo(function () { return apiFor(sessionId) }, [sessionId])
       return React.createElement(
         React.Suspense,
         { fallback: React.createElement('section', { style: { padding: 16, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } }, t('starting')) },
         React.createElement(LazyTerminal, {
           sessionId: sessionId,
-          terminalId: target.id,
-          name: target.name,
+          api: api,
           attachPath: ATTACH,
           labels: labelsFor(t),
-          onNewTab: props.openNew,
-          onCloseTab: closeThisTab,
         }),
       )
     }
 
-    /** The chip title: the session name, or the generic terminal label. */
+    /** The page title; sessions are numbered inside the page, not here. */
     function TerminalTitle(props) {
       var t = props.t || function (key) { return (en[key] || key) }
-      var tab = useTabRecord(props)
-      var params = takeParams(tab, props)
-      var tabId = tab && tab.id ? tab.id : props.tabId
-      var stored = tabId && props.dshSessionId ? readBinding(props.dshSessionId, tabId) : null
-      var id = (params && typeof params.id === 'string' && params.id) || (stored && stored.id) || ''
-      var name = humanName(params && params.name) || humanName(stored && stored.name)
-      var label = terminalLabel(t, id)
-      var title = name ? label + ' · ' + name : label
-      return React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 } }, React.createElement(TerminalGlyph, {}), React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, title))
+      return React.createElement(
+        'span',
+        { style: { display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 } },
+        React.createElement(TerminalGlyph, {}),
+        React.createElement('span', null, t('tab.title')),
+      )
     }
 
     function TerminalGlyph() {
@@ -488,85 +356,21 @@ window.__ModuleLoader__.load({
         )
       })
 
-      function findOpenTab(sessionId, terminalId) {
-        var tabs = ctx.sidebarRight.openTabs.getSnapshot()
-        for (var index = 0; index < tabs.length; index += 1) {
-          var item = tabs[index]
-          if (item.kind !== TAB_KIND) continue
-          // The inventory carries no navigation params, so the per-tab binding
-          // written by the body is the authority on which shell it shows.
-          var bound = readBinding(sessionId, item.tabId)
-          if (bound !== null && bound.id === terminalId) return item
+      /** Open the one terminal page, or focus it when it is already open. */
+      function openPanel() {
+        try {
+          ctx.sidebarRight.openTab(TAB_KIND)
+        } catch {
+          // The pane is not mounted for this session yet; the header click can
+          // be retried once the conversation is on screen.
         }
-        return null
-      }
-
-      function openTerminalTab(sessionId, target) {
-        var existing = findOpenTab(sessionId, target.id)
-        if (existing !== null) {
-          ctx.sidebarRight.focus(existing.tabId)
-          return
-        }
-        ctx.sidebarRight.openTab(TAB_KIND, { params: { id: target.id, name: target.name } })
-      }
-
-      function openRecentOrCreate(sessionId) {
-        var api = apiFor(sessionId)
-        api.state().then(function (payload) {
-          var list = Array.isArray(payload.sessions) ? payload.sessions : []
-          if (list.length > 0) {
-            var recent = list[list.length - 1]
-            openTerminalTab(sessionId, { id: recent.id, name: recent.name || recent.id })
-            return undefined
-          }
-          return api.open(120, 30).then(function (created) {
-            openTerminalTab(sessionId, { id: created.id, name: created.name || created.id })
-          })
-        }).catch(function () {
-          // No live agent for this view, or the bridge is not mounted.
-        })
-      }
-
-      var syncInFlight = false
-      function syncTerminals(sessionId) {
-        if (typeof sessionId !== 'string' || syncInFlight) return
-        syncInFlight = true
-        var api = apiFor(sessionId)
-        api.state().then(function (payload) {
-          var list = Array.isArray(payload.sessions) ? payload.sessions : []
-          for (var index = 0; index < list.length; index += 1) {
-            var item = list[index]
-            if (!item || typeof item.id !== 'string') continue
-            if (findOpenTab(sessionId, item.id) === null) {
-              try {
-                ctx.sidebarRight.openTab(TAB_KIND, { params: { id: item.id, name: item.name || '' } })
-              } catch {
-                // The pane is not mounted for this session yet; the next tick retries.
-              }
-            }
-          }
-          return undefined
-        }).catch(function () {
-          // No live agent for this view, or the bridge is not mounted.
-        }).then(function () {
-          syncInFlight = false
-        })
-      }
-
-      function openNewTab(sessionId) {
-        if (typeof sessionId !== 'string') return
-        apiFor(sessionId).open(120, 30).then(function (created) {
-          ctx.sidebarRight.openTab(TAB_KIND, { params: { id: created.id, name: created.name || created.id } })
-        }).catch(function () {
-          // The panel shows its own error if the tab cannot attach.
-        })
       }
 
       ctx.effect(function () {
         return ctx.sidebarRightTabs.register({
           id: TAB_ID,
           kind: TAB_KIND,
-          multiple: true,
+          multiple: false,
           priority: 'extension',
           title: function () { return t('tab.title') },
           guide: [
@@ -581,17 +385,6 @@ window.__ModuleLoader__.load({
       })
 
       ctx.effect(function () {
-        return ctx.sidebarRight.registerCloseHandler(TAB_KIND, function (sessionId, tab) {
-          var params = tab.navigation && tab.navigation.params
-          var bound = params && typeof params.id === 'string' ? params : readBinding(sessionId, tab.id)
-          if (bound && typeof bound.id === 'string') {
-            void apiFor(sessionId).close(bound.id).catch(function () {})
-          }
-          clearBinding(sessionId, tab.id)
-        })
-      })
-
-      ctx.effect(function () {
         return ctx.slots.inject('sidebar.right.pane.tab', function () {
           return ctx.slots.register(
             {
@@ -599,12 +392,7 @@ window.__ModuleLoader__.load({
               key: TAB_ID,
               locale: NS,
               inject: function (sessionId) {
-                return {
-                  t: t,
-                  dshSessionId: sessionId,
-                  openNew: function () { openNewTab(sessionId) },
-                  closeTab: function (tabId) { ctx.sidebarRight.close(tabId) },
-                }
+                return { t: t, dshSessionId: sessionId }
               },
             },
             TerminalBody,
@@ -634,24 +422,15 @@ window.__ModuleLoader__.load({
               id: 'agent-terminal-open',
               order: 30,
               locale: NS,
-              inject: function (sessionId) {
+              inject: function () {
                 return {
                   t: t,
-                  openTerminal: function () { openRecentOrCreate(sessionId) },
-                  syncTerminals: function () { syncTerminals(sessionId) },
+                  openTerminal: openPanel,
                 }
               },
             },
             function OpenTerminalButton(props) {
               var label = (props.t || t)('open')
-              React.useEffect(function () {
-                if (typeof props.syncTerminals !== 'function') return undefined
-                props.syncTerminals()
-                var timer = window.setInterval(props.syncTerminals, 4000)
-                return function () {
-                  window.clearInterval(timer)
-                }
-              }, [])
               return React.createElement(
                 'button',
                 {

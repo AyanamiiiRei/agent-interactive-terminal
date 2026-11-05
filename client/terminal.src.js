@@ -263,7 +263,7 @@ const FONT_STACKS = [
 const STORAGE_KEY = 'ait:terminal-settings'
 
 const DEFAULT_SETTINGS = {
-  theme: 'dark',
+  theme: 'follow',
   fontFamily: FONT_STACKS[0].value,
   fontSize: 13,
   lineHeight: 1.15,
@@ -305,7 +305,10 @@ function normalizeSettings(raw) {
   const next = { ...DEFAULT_SETTINGS, shortcuts: { ...DEFAULT_SHORTCUTS } }
   if (raw === null || typeof raw !== 'object') return next
   const candidate = raw
-  if (typeof candidate.theme === 'string' && THEMES[candidate.theme] !== undefined) next.theme = candidate.theme
+  // Version 2 introduced `follow`: older saves carried a fixed palette that
+  // was only the previous default, so they migrate to following DSH once.
+  const version = Number.isFinite(candidate.version) ? Number(candidate.version) : 0
+  if (version >= 2 && (candidate.theme === 'follow' || THEMES[candidate.theme] !== undefined)) next.theme = candidate.theme
   if (typeof candidate.fontFamily === 'string' && candidate.fontFamily.trim() !== '') next.fontFamily = candidate.fontFamily
   if (Number.isFinite(candidate.fontSize)) next.fontSize = Math.min(28, Math.max(8, Number(candidate.fontSize)))
   if (Number.isFinite(candidate.lineHeight)) next.lineHeight = Math.min(2.2, Math.max(0.9, Number(candidate.lineHeight)))
@@ -351,7 +354,7 @@ function currentSettings() {
 function writeSettings(next) {
   cachedSettings = normalizeSettings(next)
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedSettings))
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cachedSettings, version: 2 }))
   } catch {
     // Private-mode storage can refuse writes; the value still applies in memory.
   }
@@ -375,9 +378,15 @@ function resetSettings() {
   for (const listener of settingsListeners) listener(cachedSettings)
 }
 
+/** Resolve `follow` against the scheme DSH is currently showing. */
+function resolvedThemeKey(settings, scheme) {
+  if (settings.theme !== 'follow') return settings.theme
+  return scheme === 'light' ? 'light' : 'dark'
+}
+
 /** The terminal palette with the optional custom cursor color applied. */
-function themeFor(settings) {
-  const base = paletteOf(settings.theme)
+function themeFor(settings, scheme) {
+  const base = paletteOf(resolvedThemeKey(settings, scheme))
   const theme = { ...base }
   if (typeof settings.cursorColor === 'string' && /^#[0-9a-f]{6}$/i.test(settings.cursorColor)) {
     theme.cursor = settings.cursorColor
@@ -386,15 +395,61 @@ function themeFor(settings) {
 }
 
 /** Panel chrome colors that follow the terminal palette. */
-function chromeFor(settings) {
-  const palette = paletteOf(settings.theme)
+function chromeFor(settings, scheme) {
+  const key = resolvedThemeKey(settings, scheme)
+  const palette = paletteOf(key)
   return {
-    light: isLightTheme(settings.theme),
+    light: isLightTheme(key),
     accent: palette.blue,
     text: palette.foreground,
-    muted: isLightTheme(settings.theme) ? '#6a6d73' : '#9a9da3',
+    muted: isLightTheme(key) ? '#6a6d73' : '#9a9da3',
     surface: palette.background,
   }
+}
+
+/**
+ * The light/dark scheme DSH resolved for the document. The shell sets
+ * `body[data-ds-dark-theme]` from the user's choice, so watching that
+ * attribute covers both an explicit switch and the system preference.
+ */
+function dshScheme() {
+  if (
+    typeof document !== 'undefined' &&
+    document.body !== null &&
+    typeof document.body !== 'undefined' &&
+    typeof document.body.hasAttribute === 'function' &&
+    document.body.hasAttribute('data-ds-dark-theme')
+  ) {
+    return 'dark'
+  }
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark'
+  return 'light'
+}
+
+/** Subscribe to DSH scheme changes. */
+function useDshScheme() {
+  const [scheme, setScheme] = React.useState(dshScheme)
+  React.useEffect(() => {
+    const update = () => setScheme(dshScheme())
+    const observer = typeof MutationObserver === 'function' ? new MutationObserver(update) : null
+    if (observer !== null && document.body !== null && typeof document.body !== 'undefined') {
+      observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme'] })
+    }
+    const query = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null
+    if (query !== null) {
+      if (typeof query.addEventListener === 'function') query.addEventListener('change', update)
+      else if (typeof query.addListener === 'function') query.addListener(update)
+    }
+    update()
+    return () => {
+      if (observer !== null) observer.disconnect()
+      if (query !== null) {
+        if (typeof query.removeEventListener === 'function') query.removeEventListener('change', update)
+        else if (typeof query.removeListener === 'function') query.removeListener(update)
+      }
+    }
+  }, [])
+  return scheme
 }
 
 /**
@@ -472,6 +527,17 @@ function uiState(status, painted, typing, peeking) {
 const PANEL_CSS = `
 .ait-terminal{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;font-family:"Cantarell","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ait-text);background:var(--ait-bg)}
 .ait-terminal *, .ait-terminal *::before, .ait-terminal *::after{box-sizing:border-box}
+.ait-panel{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}
+.ait-panel-tabs{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--dsw-alias-border-l4);flex:none;overflow-x:auto;scrollbar-width:none}
+.ait-panel-tabs::-webkit-scrollbar{display:none}
+.ait-panel-tab{min-width:26px;height:24px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;font-variant-numeric:tabular-nums;cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.ait-panel-tab:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.ait-panel-tab[data-on="true"]{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font-weight:600}
+.ait-panel-add{width:24px;height:24px;flex:none;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:15px;line-height:1;cursor:pointer}
+.ait-panel-add:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.ait-panel-body{flex:1;min-height:0;display:flex;flex-direction:column}
+.ait-panel-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px;font-size:12px;color:var(--dsw-alias-label-tertiary);text-align:center}
+.ait-panel-open{height:28px;padding:0 12px;border-radius:7px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}
 .ait-terminal[data-light="true"] .ait-state[data-state="agent"]{color:#5f6b7a;background:color-mix(in srgb,#5f6b7a 9%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="typing"]{color:#8a5a00;background:color-mix(in srgb,#c18401 16%,transparent)}
 .ait-terminal[data-light="true"] .ait-state[data-state="peeking"]{color:#075985;background:color-mix(in srgb,#0ea5e9 12%,transparent)}
@@ -824,11 +890,12 @@ export function TerminalView(props) {
   })
   const [agentPulse, setAgentPulse] = React.useState(false)
   const [peekPulse, setPeekPulse] = React.useState(false)
-  const pulseTimer = React.useRef(0)
+  const sweepTimer = React.useRef(0)
   const peekTimer = React.useRef(0)
-  const seenCommandAt = React.useRef(0)
+  const seenAgentAt = React.useRef(0)
   const seenPeekAt = React.useRef(0)
   const [notice, setNotice] = React.useState(null)
+  const scheme = useDshScheme()
   const [settings, setSettings] = React.useState(() => currentSettings())
   const [panelOpen, setPanelOpen] = React.useState(false)
   const [zoom, setZoom] = React.useState(0)
@@ -870,7 +937,7 @@ export function TerminalView(props) {
       lineHeight: initial.lineHeight,
       letterSpacing: 0,
       scrollback: initial.scrollback,
-      theme: themeFor(initial),
+      theme: themeFor(initial, scheme),
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -920,15 +987,17 @@ export function TerminalView(props) {
       }
       setStatus(next)
       writableRef.current = next.holder === 'human'
-      if (commandAt > 0 && commandAt !== seenCommandAt.current) {
-        seenCommandAt.current = commandAt
+      const agentAt = typeof message.agentAt === 'number' ? message.agentAt : 0
+      if (agentAt > 0 && agentAt !== seenAgentAt.current) {
+        seenAgentAt.current = agentAt
+        // The agent is producing input right now; hold the sweep for a moment
+        // even when the command is short, and let the phase keep it on longer.
         setAgentPulse(true)
-        if (pulseTimer.current !== 0) window.clearTimeout(pulseTimer.current)
-      if (peekTimer.current !== 0) window.clearTimeout(peekTimer.current)
-        pulseTimer.current = window.setTimeout(() => {
-          pulseTimer.current = 0
+        if (sweepTimer.current !== 0) window.clearTimeout(sweepTimer.current)
+        sweepTimer.current = window.setTimeout(() => {
+          sweepTimer.current = 0
           setAgentPulse(false)
-        }, 2600)
+        }, 1600)
       }
       if (peekAt > 0 && peekAt !== seenPeekAt.current) {
         seenPeekAt.current = peekAt
@@ -1053,6 +1122,13 @@ export function TerminalView(props) {
       const current = settingsRef.current !== null ? settingsRef.current : initial
       const shortcuts = current.shortcuts
       if (combo === null) return true
+      // The terminal owns these chords: keep the browser (page zoom) and the
+      // app-level shortcut table out of them while the terminal has focus.
+      const consume = () => {
+        event.preventDefault()
+        event.stopPropagation()
+        return false
+      }
       if (combo === shortcuts.copy) {
         const selection = term.getSelection()
         if (selection) {
@@ -1061,7 +1137,7 @@ export function TerminalView(props) {
             .then(() => setCopied(true))
             .catch(() => {})
         }
-        return false
+        return consume()
       }
       if (combo === shortcuts.paste) {
         void navigator.clipboard
@@ -1070,27 +1146,27 @@ export function TerminalView(props) {
             if (text) term.paste(text)
           })
           .catch(() => {})
-        return false
+        return consume()
       }
       if (combo === shortcuts.newTab) {
         if (onNewRef.current) onNewRef.current()
-        return false
+        return consume()
       }
       if (combo === shortcuts.closeTab) {
         if (onCloseRef.current) onCloseRef.current()
-        return false
+        return consume()
       }
       if (combo === shortcuts.fontIncrease || (shortcuts.fontIncrease === 'ctrl+=' && combo === 'ctrl+shift+=')) {
         setZoom((value) => Math.min(15, value + 1))
-        return false
+        return consume()
       }
       if (combo === shortcuts.fontDecrease) {
         setZoom((value) => Math.max(-5, value - 1))
-        return false
+        return consume()
       }
       if (combo === shortcuts.fontReset) {
         setZoom(0)
-        return false
+        return consume()
       }
       return true
     })
@@ -1141,7 +1217,7 @@ export function TerminalView(props) {
       if (exitTimer !== 0) window.clearTimeout(exitTimer)
       if (bellTimer !== 0) window.clearTimeout(bellTimer)
       if (copyTimer !== 0) window.clearTimeout(copyTimer)
-      if (pulseTimer.current !== 0) window.clearTimeout(pulseTimer.current)
+      if (sweepTimer.current !== 0) window.clearTimeout(sweepTimer.current)
       if (peekTimer.current !== 0) window.clearTimeout(peekTimer.current)
       observer.disconnect()
       window.removeEventListener('resize', fitSoon)
@@ -1162,11 +1238,31 @@ export function TerminalView(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, terminalId])
 
+  // Keep the sweep on while the agent's command runs, then let it fade a
+  // moment after the shell settles instead of cutting it at submit time.
+  React.useEffect(() => {
+    const running =
+      status.phase === 'running' && status.access === 'collaborate' && status.holder === 'agent' && !status.suspended
+    if (running) {
+      setAgentPulse(true)
+      if (sweepTimer.current !== 0) {
+        window.clearTimeout(sweepTimer.current)
+        sweepTimer.current = 0
+      }
+      return
+    }
+    if (!agentPulse || sweepTimer.current !== 0) return
+    sweepTimer.current = window.setTimeout(() => {
+      sweepTimer.current = 0
+      setAgentPulse(false)
+    }, 1500)
+  }, [status.phase, status.access, status.holder, status.suspended, agentPulse])
+
   React.useEffect(() => {
     const term = termRef.current
     if (term === null) return
     const size = Math.min(28, Math.max(8, settings.fontSize + zoom))
-    term.options.theme = themeFor(settings)
+    term.options.theme = themeFor(settings, scheme)
     term.options.fontFamily = settings.fontFamily
     term.options.fontSize = size
     term.options.fontWeight = settings.fontWeight
@@ -1187,7 +1283,7 @@ export function TerminalView(props) {
         // The container may be hidden while a tab is in the background.
       }
     }
-  }, [settings, zoom])
+  }, [settings, zoom, scheme])
 
   // The person has the keyboard only while they keep typing. Every keystroke
   // restarts this timer; when it fires the lease goes back to the agent and the
@@ -1253,8 +1349,8 @@ export function TerminalView(props) {
                 : state === 'peeking'
                   ? labels.peeking
                   : labels.ready
-  const chrome = chromeFor(settings)
-  const palette = paletteOf(settings.theme)
+  const chrome = chromeFor(settings, scheme)
+  const palette = paletteOf(resolvedThemeKey(settings, scheme))
   const size = Math.min(28, Math.max(8, settings.fontSize + zoom))
   const countdownMs = Math.max(1, settings.idleHandback) * 1000
   const showCountdown =
@@ -1366,14 +1462,6 @@ export function TerminalView(props) {
           React.createElement('span', { className: 'ait-secret-text' }, labels.secretHint),
         )
       : null,
-    sealed
-      ? React.createElement(
-          'button',
-          { type: 'button', className: 'ait-sealed', onClick: toggleSeal },
-          React.createElement('span', { className: 'ait-sealed-dot' }),
-          React.createElement('span', { className: 'ait-sealed-text' }, labels.sealedHint),
-        )
-      : null,
     notice === null ? null : React.createElement('div', { className: 'ait-notice' }, notice),
     React.createElement(
       'div',
@@ -1406,6 +1494,7 @@ export function TerminalView(props) {
           }),
           React.createElement(TerminalSettings, {
             settings,
+            scheme,
             onChange: (patch) => writeSettings({ ...settings, ...patch }),
             onReset: () => resetSettings(),
             onClose: closePanel,
@@ -1429,6 +1518,7 @@ function humanName(name) {
  * Every change is written immediately, so the terminal updates as you edit.
  */
 function TerminalSettings(props) {
+  const scheme = props.scheme === 'light' ? 'light' : 'dark'
   const { settings, onChange, onReset, onClose, fontSize } = props
   const [recording, setRecording] = React.useState(null)
   const [tab, setTab] = React.useState('theme')
@@ -1444,7 +1534,7 @@ function TerminalSettings(props) {
   const set = (patch) => onChange(patch)
   const stack = FONT_STACKS.find((item) => item.value === settings.fontFamily) ?? FONT_STACKS[0]
   const shortcuts = settings.shortcuts
-  const palette = paletteOf(settings.theme)
+  const palette = paletteOf(resolvedThemeKey(settings, scheme))
   const themeCursor = palette.cursor ?? '#ffffff'
 
   const changeShortcut = (action, combo) => {
@@ -1473,48 +1563,52 @@ function TerminalSettings(props) {
       body,
     )
 
+  // Follow DSH comes first; the swatch previews the palette the `follow` mode
+  // resolves to right now instead of a fixed one.
+  const themeButton = (key) => {
+    const swatch = THEMES[key === 'follow' ? resolvedThemeKey(settings, scheme) : key].theme
+    const label = key === 'follow' ? '跟随 DSH' : THEMES[key].label
+    return React.createElement(
+      'button',
+      {
+        key,
+        type: 'button',
+        className: 'ait-theme',
+        'data-on': settings.theme === key ? 'true' : 'false',
+        'aria-pressed': settings.theme === key ? 'true' : 'false',
+        onClick: () => set({ theme: key }),
+      },
+      React.createElement(
+        'span',
+        { className: 'ait-swatch', style: { background: swatch.background } },
+        React.createElement(
+          'span',
+          { className: 'ait-swatch-dots' },
+          React.createElement('i', { style: { background: swatch.red } }),
+          React.createElement('i', { style: { background: swatch.yellow } }),
+          React.createElement('i', { style: { background: swatch.green } }),
+        ),
+        React.createElement('span', {
+          className: 'ait-swatch-line',
+          style: { background: swatch.foreground, width: '14px' },
+        }),
+        React.createElement('span', {
+          className: 'ait-swatch-line',
+          style: { background: swatch.foreground, width: '9px' },
+        }),
+      ),
+      React.createElement('span', { className: 'ait-theme-name' }, label),
+      settings.theme === key ? React.createElement('span', { className: 'ait-theme-check' }, CheckIcon()) : null,
+    )
+  }
+
   const themeGroup = group(
     '主题',
     card(
       React.createElement(
         'div',
         { className: 'ait-themes' },
-        Object.keys(THEMES).map((key) =>
-          React.createElement(
-            'button',
-            {
-              key,
-              type: 'button',
-              className: 'ait-theme',
-              'data-on': settings.theme === key ? 'true' : 'false',
-              'aria-pressed': settings.theme === key ? 'true' : 'false',
-              onClick: () => set({ theme: key }),
-            },
-            React.createElement(
-              'span',
-              { className: 'ait-swatch', style: { background: THEMES[key].theme.background } },
-              React.createElement(
-                'span',
-                { className: 'ait-swatch-dots' },
-                React.createElement('i', { style: { background: THEMES[key].theme.red } }),
-                React.createElement('i', { style: { background: THEMES[key].theme.yellow } }),
-                React.createElement('i', { style: { background: THEMES[key].theme.green } }),
-              ),
-              React.createElement('span', {
-                className: 'ait-swatch-line',
-                style: { background: THEMES[key].theme.foreground, width: '14px' },
-              }),
-              React.createElement('span', {
-                className: 'ait-swatch-line',
-                style: { background: THEMES[key].theme.foreground, width: '9px' },
-              }),
-            ),
-            React.createElement('span', { className: 'ait-theme-name' }, THEMES[key].label),
-            settings.theme === key
-              ? React.createElement('span', { className: 'ait-theme-check' }, CheckIcon())
-              : null,
-          ),
-        ),
+        ['follow', ...Object.keys(THEMES)].map(themeButton),
       ),
     ),
   )
@@ -1850,6 +1944,151 @@ function TerminalSettings(props) {
         '恢复默认',
       ),
       React.createElement('span', { className: 'ait-saved' }, '改动自动保存 · ' + fontSize + 'px'),
+    ),
+  )
+}
+
+/**
+ * The single sidebar page: one tab per live Host session, with our own tab
+ * strip. The Host owns the sessions; this view only lists, selects, opens and
+ * closes them, so an agent-created session appears here on the next poll and a
+ * closed one disappears for both sides.
+ */
+export function TerminalPanel(props) {
+  const { sessionId, api, attachPath, labels } = props
+  const [sessions, setSessions] = React.useState([])
+  const [selected, setSelected] = React.useState(null)
+  const [error, setError] = React.useState(null)
+  const selectedRef = React.useRef(null)
+  const creating = React.useRef(false)
+  const polling = React.useRef(false)
+  const booted = React.useRef(false)
+  selectedRef.current = selected
+
+  const openNew = React.useCallback(() => {
+    if (creating.current) return
+    creating.current = true
+    api
+      .open(120, 30)
+      .then((created) => {
+        const item = { id: String(created.id), name: created.name || String(created.id) }
+        setSessions((prev) => (prev.some((session) => session.id === item.id) ? prev : [...prev, item]))
+        setSelected(item.id)
+        setError(null)
+      })
+      .catch((reason) => {
+        setError(reason instanceof Error ? reason.message : String(reason))
+      })
+      .then(() => {
+        creating.current = false
+      })
+  }, [api])
+
+  const closeSession = React.useCallback(
+    (id) => {
+      api.close(id).catch(() => {})
+      setSessions((prev) => {
+        const next = prev.filter((session) => session.id !== id)
+        if (selectedRef.current === id) setSelected(next.length > 0 ? next[next.length - 1].id : null)
+        return next
+      })
+    },
+    [api],
+  )
+
+  React.useEffect(() => {
+    let alive = true
+    const tick = () => {
+      if (!alive || polling.current) return
+      polling.current = true
+      api
+        .state()
+        .then((payload) => {
+          if (!alive) return
+          const list = Array.isArray(payload.sessions) ? payload.sessions : []
+          const items = list
+            .filter((session) => session && typeof session.id === 'string')
+            .map((session) => ({ id: session.id, name: session.name || session.id }))
+          setSessions(items)
+          const current = selectedRef.current
+          if (current === null || !items.some((session) => session.id === current)) {
+            setSelected(items.length > 0 ? items[items.length - 1].id : null)
+          }
+          setError(null)
+          if (!booted.current) {
+            booted.current = true
+            if (items.length === 0) openNew()
+          }
+        })
+        .catch(() => {
+          // A rejected poll is not proof the sessions died; keep the last list.
+        })
+        .then(() => {
+          polling.current = false
+        })
+    }
+    tick()
+    const timer = window.setInterval(tick, 2000)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [api, openNew])
+
+  const current = sessions.find((session) => session.id === selected) || null
+
+  return React.createElement(
+    'section',
+    { className: 'ait-panel' },
+    React.createElement(
+      'div',
+      { className: 'ait-panel-tabs', role: 'tablist' },
+      sessions.map((session) =>
+        React.createElement(
+          'button',
+          {
+            key: session.id,
+            type: 'button',
+            role: 'tab',
+            title: session.name,
+            'aria-selected': session.id === selected ? 'true' : 'false',
+            className: 'ait-panel-tab',
+            'data-on': session.id === selected ? 'true' : 'false',
+            onClick: () => setSelected(session.id),
+          },
+          session.id,
+        ),
+      ),
+      React.createElement(
+        'button',
+        { type: 'button', className: 'ait-panel-add', title: labels.newTerminal, 'aria-label': labels.newTerminal, onClick: openNew },
+        '+',
+      ),
+    ),
+    React.createElement(
+      'div',
+      { className: 'ait-panel-body' },
+      current !== null
+        ? React.createElement(TerminalView, {
+            key: current.id,
+            sessionId: sessionId,
+            terminalId: current.id,
+            name: current.name,
+            attachPath: attachPath,
+            labels: labels,
+            onNewTab: openNew,
+            onCloseTab: () => closeSession(current.id),
+          })
+        : React.createElement(
+            'div',
+            { className: 'ait-panel-empty' },
+            React.createElement('span', null, error === null ? labels.newTerminal : error),
+            React.createElement(
+              'button',
+              { type: 'button', className: 'ait-panel-open', onClick: openNew },
+              labels.newTerminal,
+            ),
+          ),
     ),
   )
 }

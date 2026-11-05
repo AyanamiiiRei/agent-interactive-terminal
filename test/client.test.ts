@@ -83,6 +83,7 @@ function loadClient(): Harness {
     useEffect: () => undefined,
     useRef: (value: unknown) => ({ current: value }),
     useCallback: (fn: unknown) => fn,
+    useMemo: (factory: () => unknown) => factory(),
   }
   if (loaded.module === undefined) throw new Error('the client half did not call the module loader')
   const exports = loaded.module.factory(() => reactStub)
@@ -160,7 +161,7 @@ describe('browser half', () => {
     expect(client.inject).toEqual(['slots', 'locale', 'sidebarRight', 'sidebarRightTabs'])
   })
 
-  it('registers a multi-instance terminal tab, its body and title, and the header button', () => {
+  it('registers one terminal page, its body and title, and the header button', () => {
     const client = loadClient()
     client.apply()
     expect(client.slots.map((slot) => slot.name).sort()).toEqual([
@@ -174,79 +175,49 @@ describe('browser half', () => {
     )
     expect(client.tabs).toHaveLength(1)
     expect(client.tabs[0]?.['kind']).toBe('agent-terminal')
-    expect(client.tabs[0]?.['multiple']).toBe(true)
-    expect(client.closeHandlers).toHaveLength(1)
-    expect(client.closeHandlers[0]?.kind).toBe('agent-terminal')
+    expect(client.tabs[0]?.['multiple']).toBe(false)
+    // Closing the page must not kill the sessions the agent may still be using.
+    expect(client.closeHandlers).toHaveLength(0)
   })
 
-  it('opens the newest live session from the header button', async () => {
+  it('opens the single terminal page from the header button without a terminal id', async () => {
     const client = loadClient()
     client.apply()
     const header = client.slots.find((slot) => slot.name === 'conversation.session.header.utilities')
-    const props = header?.inject?.('session-1') as { openTerminal(): void }
-    client.fetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ sessions: [{ id: 's-live', name: 'demo' }] }),
-    })
-    props.openTerminal()
-    await vi.waitFor(() => {
-      expect(client.opened).toHaveLength(1)
-    })
-    expect(client.fetch).toHaveBeenCalledWith(
-      '/agent-terminal-bridge/state?sessionId=session-1',
-      expect.anything(),
-    )
-    expect(client.opened[0]).toEqual({
-      kind: 'agent-terminal',
-      options: { params: { id: 's-live', name: 'demo' } },
-    })
-  })
-
-  it('focuses the tab already bound to the newest session instead of opening another', async () => {
-    const client = loadClient()
-    client.apply()
-    client.storage.set('ait:tab:session-1:tab-9', JSON.stringify({ id: 's-live', name: 'demo' }))
-    client.openTabs.push({ sessionId: 'session-1', tabId: 'tab-9', kind: 'agent-terminal', contentId: 'x' })
-    const header = client.slots.find((slot) => slot.name === 'conversation.session.header.utilities')
-    client.fetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ sessions: [{ id: 's-live', name: 'demo' }] }),
-    })
     ;(header?.inject?.('session-1') as { openTerminal(): void }).openTerminal()
-    await vi.waitFor(() => {
-      expect(client.focused).toEqual(['tab-9'])
-    })
-    expect(client.opened).toHaveLength(0)
+    expect(client.opened).toEqual([{ kind: 'agent-terminal' }])
+    // The page polls for sessions itself, so opening it does not fetch first.
+    expect(client.fetch).not.toHaveBeenCalled()
   })
 
-  it('renders the xterm body for the session bound by the tab params', () => {
+  it('renders the panel host for the DSH session that opened the page', () => {
     const client = loadClient()
     client.apply()
     const body = client.slots.find((slot) => slot.name === 'sidebar.right.pane.tab')
     const injected = body?.component as (props: Record<string, unknown>) => {
       props: { children: { props: Record<string, unknown> } }
     }
-    const tree = injected({
-      ...(body?.inject?.('session-1') as Record<string, unknown>),
-      useTabInfo: () => ({ tab: { id: 'tab-1', navigation: { params: { id: 's-live', name: 'demo' } } } }),
-    })
-    expect(tree.props.children.props['terminalId']).toBe('s-live')
-    expect(tree.props.children.props['sessionId']).toBe('session-1')
-    expect((tree.props.children.props['labels'] as Record<string, string>)['observe']).toBe('state.observe')
-    expect((tree.props.children.props['labels'] as Record<string, string>)['sealed']).toBe('state.sealed')
+    const tree = injected(body?.inject?.('session-1') as Record<string, unknown>)
+    const panelProps = tree.props.children.props
+    expect(panelProps['sessionId']).toBe('session-1')
+    expect(panelProps['attachPath']).toBe('/agent-terminal-bridge/attach')
+    expect(typeof (panelProps['api'] as Record<string, unknown>)['state']).toBe('function')
+    expect(typeof (panelProps['api'] as Record<string, unknown>)['open']).toBe('function')
+    expect(typeof (panelProps['api'] as Record<string, unknown>)['close']).toBe('function')
+    const labels = panelProps['labels'] as Record<string, string>
+    expect(labels['observe']).toBe('state.observe')
+    expect(labels['sealed']).toBe('state.sealed')
+    expect(labels['newTerminal']).toBe('action.newTerminal')
   })
 
-  it('terminates the bound session when the tab is closed', async () => {
+  it('titles the page without a session number', () => {
     const client = loadClient()
     client.apply()
-    client.closeHandlers[0]?.run('session-1', { id: 'tab-1', navigation: { params: { id: 's-live' } } })
-    await vi.waitFor(() => {
-      expect(client.fetch).toHaveBeenCalledWith(
-        '/agent-terminal-bridge/close?sessionId=session-1',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ id: 's-live' }) }),
-      )
+    const title = client.slots.find((slot) => slot.name === 'sidebar.right.pane.tab.title')
+    const rendered = (title?.component as (props: Record<string, unknown>) => { props: { children: unknown[] } })({
+      ...(title?.inject?.('session-1') as Record<string, unknown>),
     })
+    expect(JSON.stringify(rendered)).toContain('tab.title')
+    expect(JSON.stringify(rendered)).not.toContain('terminal')
   })
 })

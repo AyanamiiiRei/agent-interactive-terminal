@@ -72,6 +72,7 @@ export class TerminalSession {
     lastWriteAt = 0;
     agentCommandValue;
     agentCommandAtValue = 0;
+    lastAgentWriteAtValue = 0;
     peekAtValue = 0;
     agentAccessValue = 'collaborate';
     lastExitCode = null;
@@ -187,6 +188,10 @@ export class TerminalSession {
     /** When that command was submitted, in epoch milliseconds. */
     get agentCommandAt() {
         return this.agentCommandAtValue;
+    }
+    /** When the agent last wrote anything, including a partial line. */
+    get agentAt() {
+        return this.lastAgentWriteAtValue;
     }
     /** How much of this session the agent may use. Only a person should set it. */
     get agentAccess() {
@@ -314,6 +319,8 @@ export class TerminalSession {
         const secret = origin === 'human' && this.leaseState.suspended;
         const submitting = submit || /[\r\n]/.test(text);
         const command = origin === 'agent' && submitting ? text.replace(/[\r\n]+/g, ' ').trim() : '';
+        if (origin === 'agent')
+            this.lastAgentWriteAtValue = Date.now();
         if (command !== '') {
             this.agentCommandValue = command;
             this.agentCommandAtValue = Date.now();
@@ -344,6 +351,7 @@ export class TerminalSession {
         if (!Number.isInteger(repeat) || repeat < 1 || repeat > 50) {
             throw new Error('repeat must be an integer between 1 and 50');
         }
+        this.lastAgentWriteAtValue = Date.now();
         const signal = KEY_SIGNALS[key];
         if (signal) {
             const target = this.fg?.pgid ?? this.pty.pid;

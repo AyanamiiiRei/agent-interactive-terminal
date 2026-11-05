@@ -53,6 +53,7 @@ export declare class TerminalSession {
     private lastWriteAt;
     private agentCommandValue;
     private agentCommandAtValue;
+    private lastAgentWriteAtValue;
     private peekAtValue;
     private agentAccessValue;
     private lastExitCode;
@@ -96,6 +97,8 @@ export declare class TerminalSession {
     get agentCommand(): string | undefined;
     /** When that command was submitted, in epoch milliseconds. */
     get agentCommandAt(): number;
+    /** When the agent last wrote anything, including a partial line. */
+    get agentAt(): number;
     /** How much of this session the agent may use. Only a person should set it. */
     get agentAccess(): AgentAccess;
     /** Change the agent's access; sealed aborts reads and writes at once. */

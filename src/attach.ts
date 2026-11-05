@@ -92,6 +92,7 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
       revision: session.revision,
       command: session.agentCommand,
       commandAt: session.agentCommandAt,
+      agentAt: session.agentAt,
       peekAt: session.peekAt,
       access: session.agentAccess,
     })

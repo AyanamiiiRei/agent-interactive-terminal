@@ -71,46 +71,52 @@ Host startup, and the browser chunk enters the module table at startup too.
 ### 🖥️ The shared terminal panel
 
 With the plugin enabled, the session header above the conversation gets a
-terminal icon. Clicking it opens a real terminal in the right sidebar:
-xterm.js owns the keyboard, and there is no extra input line and no Send
-button. One tab is one Host session. Opening a tab spawns a shell immediately
-and attaches to that PTY; closing the tab stops its process tree, and when the
-shell exits on its own the tab closes itself after a moment. Clicking the
-header icon again focuses the tab already bound to the newest session instead
-of stacking a second view.
+terminal icon. Clicking it opens one page in the right sidebar, "Interactive
+Terminal": xterm.js owns the keyboard, and there is no extra input line and no
+Send button. The page has its own tab strip, one numbered entry per live Host
+session (1, 2, 3 and so on). A terminal the agent opens appears in that same
+strip, and a session you create with the plus button is immediately visible to
+the agent's `terminal_list`. Closing one number ends that session and the agent
+sees it disappear; closing the whole page only hides the view, the sessions stay
+on the Host and reattach when you open the page again.
 
 The keyboard is not gated behind a button. Clicking into the terminal only moves
 focus; the lease follows an actual keystroke, and the badge turns green ("You
 have control") at that moment. A few seconds after your last key (four by
 default) the lease goes back to the agent on its own, the badge returns to a
-quiet "Ready"; when the agent actually writes a command the badge turns gold
-("Agent is driving") and a highlight sweeps the bar, and when it reads the
-screen with `terminal_snapshot` or `terminal_wait` the badge turns cyan
-("Watching") for a moment. The thin line under the bar shows how long is left.
-A credential prompt turns the badge red and asks for your password, which never
-enters the model's context. The agent reads the
-same screen with `terminal_snapshot`, and whatever the agent writes appears here
-immediately. A closed browser also returns the lease, so the agent is never
-locked out.
+quiet "Ready"; when the agent writes a command the badge turns gold ("Agent is
+driving") and a highlight sweeps the bar, and when it reads the screen with
+`terminal_snapshot` or `terminal_wait` the badge turns cyan ("Watching") for a
+moment. The thin line under the bar shows how long is left. A credential prompt
+turns the badge red and asks for your password, which never enters the model's
+context. The agent reads the same screen with `terminal_snapshot`, and whatever
+the agent writes appears here immediately. A closed browser also returns the
+lease, so the agent is never locked out.
 
 Two more buttons in the header decide what the agent may do. The lock switches
 the session to read-only: the agent can still look, but writes fail with
-`READ_ONLY`. The plug seals it: the agent can neither look nor write, the
-terminal gets a red border and a strip you can click to reconnect, and an
-in-flight wait is aborted immediately; `terminal_list` keeps only a redacted
-entry with no name and no content. Both levels are enforced by the server, not
-by dropping keys in the browser, and you can always type because the terminal
-is yours.
+`READ_ONLY` and the badge reads "Agent read-only". The plug disconnects it: the
+agent can neither look nor write, the badge reads "Agent disconnected", the
+border turns red, and the extra hint strip is gone; click the plug again to
+reconnect. An in-flight wait is aborted immediately, and `terminal_list` keeps
+only a redacted entry with no name and no content. Both levels are enforced by
+the server, not by dropping keys in the browser, and you can always type because
+the terminal is yours.
 
 Keyboard input, clipboard, and resizing use the WebSocket attach stream.
 Selecting text copies it, Ctrl+Shift+V or a right click pastes with bracketed
 paste, and a window resize refits the terminal and sends the new size to the
 PTY. The shortcuts follow Ptyxis: Ctrl+Shift+T opens a tab, Ctrl+Shift+W closes
-it, Ctrl+Shift+C/V copy and paste, and Ctrl+=, Ctrl+-, Ctrl+0 zoom the font.
+the current one, Ctrl+Shift+C/V copy and paste, and Ctrl+=, Ctrl+-, Ctrl+0 zoom
+the font. While the terminal has focus it calls `preventDefault` on those
+chords, so Ctrl+- is less likely to zoom the whole DSH page as well; if the
+browser still handles its own zoom shortcut, the page cannot take it back.
 
-The gear button opens a settings sheet with three groups, "Theme and font",
-"Cursor and behaviour", and "Shortcuts": seven themes (Dark, Light, Solarized
-Dark and Light, Dracula, One Dark, GNOME, Tango, each with a full 16-color ANSI
+The terminal follows the DSH light or dark theme by default and switches with
+it; a fixed palette can still be chosen in the settings. The gear button opens a
+settings sheet with three groups, "Theme and font", "Cursor and behaviour", and
+"Shortcuts": follow DSH plus seven themes (Dark, Light, Solarized Dark and
+Light, Dracula, One Dark, GNOME, Tango, each with a full 16-color ANSI
 palette), font family, size, line height, weight, ligatures, cursor shape and
 blink, scrollback, bell, copy-on-select, right-click paste, the idle delay after
 which control returns to the agent, and a shortcut table where every binding can
@@ -120,6 +126,11 @@ localStorage, with a restores-defaults button at the bottom. The sheet is an
 overlay inside the terminal, never a modal dialog. Before the shell attaches the
 panel shows a "Connecting" indicator, and a successful copy briefly shows a
 "Copied" toast at the bottom.
+
+The command-interception design is written up in
+`docs/command-interception.zh.md`: three modes (approve risky commands, no
+interception, approve every command), reusing the DSH approval service. This
+round only documents the plan; it is not implemented.
 
 The configuration card also gained a "default execution surface" choice.
 "Interactive terminal first" adds a system-prompt section that steers the
@@ -348,6 +359,7 @@ src/tools/index.ts       Eight model-facing tool definitions
 src/cli/demo.ts          Interactive demo over the tool surface
 test/                    Screen, session, shell, lease, capsule, and tool tests
 docs/design.zh.md        Full design document
+docs/command-interception.zh.md  Command interception plan (plan only, not implemented)
 ROADMAP.md               Milestones, scope, and explicit non-goals
 ```
 

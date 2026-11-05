@@ -24,6 +24,19 @@ describe('TerminalSession', () => {
     expect(result.view.text).toContain('hello-test')
   })
 
+  it('records agent activity before a line is submitted', async () => {
+    const session = await open()
+    expect(session.agentAt).toBe(0)
+    await session.write('echo partial', { submit: false })
+    expect(session.agentAt).toBeGreaterThan(0)
+    // Only a submitted line becomes a command; the sweep follows the keystrokes.
+    expect(session.agentCommandAt).toBe(0)
+    await session.press('ctrl-c')
+    const before = session.agentAt
+    await session.press('ctrl-c')
+    expect(session.agentAt).toBeGreaterThanOrEqual(before)
+  })
+
   it('waits for a literal pattern', async () => {
     const session = await open()
     await session.write('printf "ready-TOKEN-42\\n"')
