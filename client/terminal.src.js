@@ -5,12 +5,13 @@
  * chunk is loaded lazily by `client/index.js`, so xterm.js only arrives when a
  * terminal tab is actually opened.
  *
- * Interaction model: there is no takeover button. Typing is always allowed
- * unless the person explicitly locked the keyboard, and the first keystroke
- * takes the lease from the agent. A few seconds after the last keystroke the
- * lease goes back to the agent automatically, which a thin countdown line
- * communicates. Mouse clicks never change the lease, so selecting and copying
- * output works in every state.
+ * Interaction model: typing always allowed, and the first keystroke takes the
+ * lease from the agent. A few seconds after the last keystroke the lease goes
+ * back to the agent automatically in collaborate mode, which a thin countdown
+ * line communicates. The person can also make the session read-only or sealed,
+ * which are server-enforced access levels rather than local typing locks.
+ * Mouse clicks never change the lease, so selecting and copying output works
+ * in every state.
  */
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
