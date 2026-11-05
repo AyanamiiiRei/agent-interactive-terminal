@@ -57,6 +57,23 @@ git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#8302fd73e9237
 行，装好之后由 loader 加载。配置卡里改的 shell 只影响之后新开的会话，已经
 打开的会话保持原来的 shell。
 
+### 🖥️ 共享终端面板
+
+启用之后，对话页会话标题栏会出现一个终端图标。点它，右侧边栏会打开“Agent 终端”
+面板。面板列出当前会话已经开着的交互式终端，显示的是 agent 用 `terminal_snapshot`
+看到的同一块屏幕，并且会持续刷新。下面的输入框直接写进同一个 PTY：你敲命令
+（比如 `conda activate`、`psql`、`python`）时，agent 在下一轮就能看到结果；agent
+写进去的东西，你也会立刻在面板里看到。
+
+“新建”按钮会以 `kind: user` 开一个会话，agent 之后可以用 `terminal_list` 发现它，
+再用 `terminal_send` 继续操作。Ctrl-C、Esc、Tab 和上下键在面板底部。桥接只监听
+本机回环地址，并检查 Host 和 Origin 头；终端进程用你自己的用户权限运行，这一点
+和右侧边栏自带的终端一致。
+
+配置卡里新增了“默认执行方式”。“优先交互式终端”会给 agent 一段系统提示，让它
+优先把 REPL、包管理器、数据库客户端这类工作放进共享终端；“优先一次性命令”则
+反过来。自动模式不额外加提示，由模型按工具描述自己选。
+
 ## 🚀 快速开始
 
 需要 Node.js 20 或更新版本，以及用于编译 `node-pty` 的 C++ 工具链。开发和 CI

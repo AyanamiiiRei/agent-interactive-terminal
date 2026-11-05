@@ -66,6 +66,28 @@ DSH restart the first time it is enabled; the terminal plugin is an ordinary bun
 is loaded by the loader. Changing the shell in the configuration card affects
 only sessions opened afterwards; existing sessions keep their shell.
 
+### 🖥️ The shared terminal panel
+
+With the plugin enabled, the session header above the conversation gets a
+terminal icon. Clicking it opens the "Agent terminal" tab in the right sidebar.
+The panel lists the interactive sessions that are currently open for this
+session, shows the same screen the agent reads with `terminal_snapshot`, and
+refreshes continuously. The input line writes into the same PTY: when you run
+`conda activate`, `psql`, or `python`, the agent sees the result on its next
+call, and whatever the agent writes shows up in the panel.
+
+The New button opens a session with `kind: user`; the agent can find it with
+`terminal_list` and continue with `terminal_send`. Ctrl-C, Esc, Tab, and the
+arrow keys sit at the bottom of the panel. The bridge listens on loopback only
+and checks the Host and Origin headers; the shell process runs with your own
+user permissions, the same as the sidebar's built-in terminal.
+
+The configuration card also gained a "default execution surface" choice.
+"Interactive terminal first" adds a system-prompt section that steers the
+agent toward the shared terminal for REPLs, package managers, database clients,
+and similar work; "one-shot commands first" steers it back. Auto adds no
+guidance and leaves the choice to the model.
+
 ## 🚀 Quick start
 
 Requires Node.js 20 or newer and a C++ toolchain for `node-pty`. Development

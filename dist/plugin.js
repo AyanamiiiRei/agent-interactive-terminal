@@ -12,14 +12,16 @@
 import z from '@deepseek-ai/schemastery';
 import { accessSync, constants } from 'node:fs';
 import { join } from 'node:path';
+import { createBridgeHandler } from './bridge.js';
 import { TerminalRegistry } from './session/registry.js';
 import { createTerminalTools } from './tools/index.js';
 export const name = 'agent-interactive-terminal';
 export const inject = ['tools'];
-/** Shell selection exposed in the Plugins page and validated by the loader. */
+/** Shell, capacity and default execution surface exposed in the Plugins page. */
 export const Config = z.object({
     shell: z.union([z.const('auto'), z.const('zsh'), z.const('bash')]).default('auto'),
     maxSessions: z.number().step(1).min(1).max(16).default(4),
+    mode: z.union([z.const('auto'), z.const('terminal'), z.const('exec')]).default('auto'),
 });
 /**
  * Locate an executable on `PATH` without spawning a process.
@@ -115,6 +117,46 @@ export function apply(ctx, config) {
                 return result.text;
             },
         }));
+    }
+    const openFromBridge = async (toolkit, options) => {
+        const configured = shellPath(config.shell);
+        return toolkit.registry.open({
+            ...(options.cols === undefined ? {} : { cols: options.cols }),
+            ...(options.rows === undefined ? {} : { rows: options.rows }),
+            ...(options.kind === undefined ? {} : { kind: options.kind }),
+            ...(configured === undefined ? {} : { shell: configured }),
+        });
+    };
+    ctx.inject(['webServer', 'agents'], (host) => {
+        const handler = createBridgeHandler({
+            resolve: (sessionId) => {
+                const agent = host.agents.get(sessionId);
+                if (agent === undefined)
+                    return undefined;
+                const toolkit = toolkitFor(agent);
+                return {
+                    registry: toolkit.registry,
+                    open: (options) => openFromBridge(toolkit, options),
+                };
+            },
+        });
+        host.effect(() => host.webServer.register({
+            kind: 'prefix',
+            path: '/plugins/agent-interactive-terminal',
+            handler,
+        }));
+    });
+    if (config.mode !== 'auto') {
+        const guidance = config.mode === 'terminal'
+            ? 'Prefer terminal_open and the other terminal_* tools when work is interactive, long-running, or benefits from shared state: REPLs, package managers, database clients, TUI programs, or anything that may prompt for input. Keep bash for short one-shot commands whose output you only need once. The user can open the same sessions in the right sidebar and type into them at any time, so treat the terminal as a shared workspace and close sessions you no longer need.'
+            : 'Prefer bash for shell work. Use terminal_open and the other terminal_* tools only when a program needs a persistent interactive session, prompts for input, or should be shared with the user in the right sidebar.';
+        ctx.inject(['systemPrompt'], (host) => {
+            host.effect(() => host.systemPrompt.section({
+                name: 'agent-interactive-terminal',
+                order: host.systemPrompt.getSectionOrder('TOOL_PTY'),
+                text: guidance,
+            }));
+        });
     }
     ctx.effect(() => () => {
         for (const registry of registries)

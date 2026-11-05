@@ -12,14 +12,23 @@ interface Harness {
   close(): Promise<void>
 }
 
+interface MountOptions {
+  shell: 'auto' | 'zsh' | 'bash'
+  maxSessions: number
+  mode?: 'auto' | 'terminal' | 'exec'
+}
+
 /**
  * Mount the plugin with a stand-in tool registry so the config the loader would
  * pass to `apply` is exercised through the real session code.
  *
+ * The fake context has no Host web server or prompt service, so the optional
+ * seats are skipped exactly as they would be in a deployment without them.
+ *
  * @param config - row configuration handed to the plugin.
  * @returns the registered tools and a disposer.
  */
-function mount(config: { shell: 'auto' | 'zsh' | 'bash'; maxSessions: number }): Harness {
+function mount(config: MountOptions): Harness {
   const definitions = new Map<string, ToolDefinition>()
   const disposers: (() => void | Promise<void>)[] = []
   const ctx = {
@@ -33,8 +42,11 @@ function mount(config: { shell: 'auto' | 'zsh' | 'bash'; maxSessions: number }):
       const disposer = effect()
       if (disposer !== undefined) disposers.push(disposer)
     },
+    inject(): void {
+      // The optional Host seats need services this fake context does not mount.
+    },
   }
-  apply(ctx as never, config)
+  apply(ctx as never, { ...config, mode: config.mode ?? 'auto' })
   const agent = { id: 'plugin-test-agent' }
   return {
     names() {
@@ -112,5 +124,37 @@ describe('plugin entry', () => {
     } finally {
       await harness.close()
     }
+  })
+
+  it('adds terminal-first guidance only when the mode asks for it', () => {
+    const sections: { name: string; order: number; text: string }[] = []
+    const ctx = {
+      tools: { register: () => () => {} },
+      effect(effect: () => (() => void) | void): void {
+        effect()
+      },
+      inject(services: string[], setup: (scoped: unknown) => void): void {
+        if (!services.includes('systemPrompt')) return
+        setup({
+          effect(effect: () => (() => void) | void): void {
+            effect()
+          },
+          systemPrompt: {
+            getSectionOrder: () => 1700,
+            section(section: { name: string; order: number; text: string }): () => void {
+              sections.push(section)
+              return () => {}
+            },
+          },
+        })
+      },
+    }
+    apply(ctx as never, { shell: 'auto', maxSessions: 1, mode: 'terminal' })
+    expect(sections).toHaveLength(1)
+    expect(sections[0]?.text).toContain('terminal_open')
+
+    sections.length = 0
+    apply(ctx as never, { shell: 'auto', maxSessions: 1, mode: 'auto' })
+    expect(sections).toHaveLength(0)
   })
 })
