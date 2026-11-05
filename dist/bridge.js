@@ -137,17 +137,17 @@ function intField(body, name, min, max) {
  * @returns the fields the panel needs to list and select it.
  */
 function summaryOf(session) {
-    const capsule = session.capsuleLine();
-    const snapshot = session.snapshot({ mode: 'screen' });
+    // The list is the page's own inventory, not an agent read, so it must keep
+    // working while a session is sealed and `snapshot` would throw SEALED.
+    const size = session.size;
     return {
         id: session.id,
         name: session.name ?? null,
         kind: session.kind,
-        summary: capsule,
-        phase: snapshot.phase,
-        cols: snapshot.cols,
-        rows: snapshot.rows,
-        alt: snapshot.alt,
+        summary: session.capsuleLine(),
+        phase: session.phase,
+        cols: size.cols,
+        rows: size.rows,
     };
 }
 /**

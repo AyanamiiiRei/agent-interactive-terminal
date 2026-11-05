@@ -108,6 +108,18 @@ describe('bridge routes', () => {
     expect(payload.sessions[0]?.name).toBe('shared')
   })
 
+  it('keeps listing a session while the agent is sealed out', async () => {
+    const target = await serve('sess-1')
+    mounted.push(target)
+    const session = await target.registry.open({ shell: '/bin/bash', name: 'shared' })
+    session.setAgentAccess('sealed')
+    const response = await fetch(`${target.base}/state?sessionId=sess-1`)
+    expect(response.status).toBe(200)
+    const payload = (await response.json()) as { sessions: { id: string; name: string }[] }
+    expect(payload.sessions.map((item) => item.id)).toEqual([session.id])
+    expect(payload.sessions[0]?.name).toBe('shared')
+  })
+
   it('writes into the same screen the agent reads', async () => {
     const target = await serve('sess-1')
     mounted.push(target)
