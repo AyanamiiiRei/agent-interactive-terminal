@@ -49,7 +49,7 @@ https://raw.githubusercontent.com/AyanamiiiRei/agent-interactive-terminal/main/p
 填 Git 规格：
 
 ```bash
-git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#bd6c936d82fcc0be19495b552dd69696f84d3f6d
+git+https://github.com/AyanamiiiRei/agent-interactive-terminal.git#0cedd59f8465b6caba8517a833a69c8cf28b88b6
 ```
 
 安装时会提示批准 `node-pty` 的构建脚本，同意之后才会编译出原生模块。插件市场
