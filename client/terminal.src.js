@@ -303,6 +303,7 @@ const DEFAULT_SETTINGS = {
   bell: 'none',
   copyOnSelect: true,
   pasteOnRightClick: true,
+  inputLocked: false,
   idleHandback: 4,
   shortcuts: { ...DEFAULT_SHORTCUTS },
 }
@@ -421,6 +422,7 @@ function normalizeSettings(raw) {
   if (candidate.bell === 'none' || candidate.bell === 'sound' || candidate.bell === 'visual') next.bell = candidate.bell
   if (typeof candidate.copyOnSelect === 'boolean') next.copyOnSelect = candidate.copyOnSelect
   if (typeof candidate.pasteOnRightClick === 'boolean') next.pasteOnRightClick = candidate.pasteOnRightClick
+  if (typeof candidate.inputLocked === 'boolean') next.inputLocked = candidate.inputLocked
   if (Number.isFinite(candidate.idleHandback)) next.idleHandback = Math.min(30, Math.max(1, Number(candidate.idleHandback)))
   if (candidate.shortcuts !== null && typeof candidate.shortcuts === 'object') {
     for (const action of Object.keys(DEFAULT_SHORTCUTS)) {
@@ -651,6 +653,13 @@ const PANEL_CSS = `
 .ait-panel-add:hover{border-color:var(--ait-accent-line);background:var(--ait-accent-soft);color:var(--ait-accent)}
 .ait-panel-add:active{transform:scale(0.94)}
 .ait-panel-add:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
+.ait-panel-lock{display:inline-flex;align-items:center;gap:5px;height:28px;flex:none;padding:0 8px;border:1px solid var(--ait-panel-line);border-radius:7px;background:var(--ait-shell-control);color:var(--ait-panel-muted);font:inherit;font-size:11.5px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1),color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-panel-lock svg{width:14px;height:14px;flex:none}
+.ait-panel-lock:hover{background:var(--ait-shell-hover);color:var(--ait-panel-fg)}
+.ait-panel-lock:active{transform:scale(0.97)}
+.ait-panel-lock:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
+.ait-panel-lock[data-on="true"]{border-color:var(--ait-accent-line);background:var(--ait-accent-soft);color:var(--ait-accent)}
+.ait-panel-lock[data-on="true"]:hover{background:var(--ait-accent-line);color:var(--ait-accent-ink)}
 .ait-panel-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:0}
 .ait-pane{display:none;flex:1;min-height:0;flex-direction:column}
 .ait-pane[data-active="true"]{display:flex}
@@ -919,7 +928,7 @@ const PANEL_CSS = `
   .ait-key{min-height:44px}
 }
 @media (prefers-reduced-motion:reduce){
-  .ait-sheet,.ait-tab-body,.ait-tab-body>.ait-group,.ait-toast,.ait-backdrop,.ait-icon,.ait-panel-tab,.ait-panel-tab-close,.ait-panel-add,.ait-panel-open,.ait-secret,.ait-switch,.ait-switch::after,.ait-sheet-tabs,.ait-sheet-tab,.ait-segment button,.ait-stepper button,.ait-theme,.ait-key,.ait-ghost,.ait-panel::before,.ait-panel-tabs::before,.ait-panel-tabs::after,.ait-panel-body::before,.ait-panel-body::after{animation:none!important;transition:none!important}
+  .ait-sheet,.ait-tab-body,.ait-tab-body>.ait-group,.ait-toast,.ait-backdrop,.ait-icon,.ait-panel-tab,.ait-panel-tab-close,.ait-panel-add,.ait-panel-lock,.ait-panel-open,.ait-secret,.ait-switch,.ait-switch::after,.ait-sheet-tabs,.ait-sheet-tab,.ait-segment button,.ait-stepper button,.ait-theme,.ait-key,.ait-ghost,.ait-panel::before,.ait-panel-tabs::before,.ait-panel-tabs::after,.ait-panel-body::before,.ait-panel-body::after{animation:none!important;transition:none!important}
   .ait-idle{animation:none!important;opacity:0.3}
   .ait-tab-body>.ait-group{opacity:1;transform:none}
 }
@@ -1435,6 +1444,7 @@ export function TerminalView(props) {
     const onContextMenu = (event) => {
       event.preventDefault()
       const current = settingsRef.current
+      if (current !== null && current.inputLocked === true) return
       if (current !== null && current.pasteOnRightClick === false) return
       void navigator.clipboard
         .readText()
@@ -1443,7 +1453,15 @@ export function TerminalView(props) {
         })
         .catch(() => {})
     }
-    const onPointerDown = () => term.focus()
+    const onPointerDown = (event) => {
+      const current = settingsRef.current
+      if (current !== null && current.inputLocked === true) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+      term.focus()
+    }
     host.addEventListener('contextmenu', onContextMenu)
     host.addEventListener('pointerdown', onPointerDown)
     const observer = new ResizeObserver(fitSoon)
@@ -1459,6 +1477,7 @@ export function TerminalView(props) {
     // already inside the panel or nowhere in particular.
     const focusTimer = window.setTimeout(() => {
       if (disposed || !activeRef.current) return
+      if (settingsRef.current !== null && settingsRef.current.inputLocked === true) return
       if (!autoFocus) {
         const active = document.activeElement
         const inside =
@@ -1516,7 +1535,11 @@ export function TerminalView(props) {
         // A hidden or zero-sized host can refuse a fit; the observer retries.
       }
       term.scrollToBottom()
-      if (autoFocus) term.focus()
+      if (settingsRef.current !== null && settingsRef.current.inputLocked === true) {
+        term.blur()
+      } else if (autoFocus) {
+        term.focus()
+      }
     }, 40)
     return () => window.clearTimeout(timer)
   }, [active, focusEpoch, autoFocus])
@@ -1554,6 +1577,8 @@ export function TerminalView(props) {
     term.options.cursorStyle = settings.cursorStyle
     term.options.cursorBlink = settings.cursorBlink
     term.options.scrollback = settings.scrollback
+    term.options.disableStdin = settings.inputLocked === true
+    if (settings.inputLocked === true) term.blur()
     const host = hostRef.current
     if (host !== null) {
       host.style.fontVariantLigatures = settings.ligatures ? 'contextual' : 'none'
@@ -1589,6 +1614,7 @@ export function TerminalView(props) {
   }, [copied])
 
   const focusTerminal = () => {
+    if (settingsRef.current !== null && settingsRef.current.inputLocked === true) return
     const term = termRef.current
     if (term !== null) term.focus()
   }
@@ -2280,6 +2306,10 @@ export function TerminalPanel(props) {
     return subscribeSettings(setSettings)
   }, [])
   const shellStyle = shellTheme(paletteOf(resolvedThemeKey(settings, scheme)))
+  const inputLocked = settings.inputLocked === true
+  const toggleInputLock = React.useCallback(() => {
+    writeSettings({ ...settings, inputLocked: !inputLocked })
+  }, [settings, inputLocked])
   const selectedRef = React.useRef(null)
   const sessionsRef = React.useRef([])
   const closingRef = React.useRef(new Set())
@@ -2636,6 +2666,20 @@ export function TerminalPanel(props) {
             ),
           )
         }),
+      ),
+      React.createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'ait-panel-lock',
+          'data-on': inputLocked ? 'true' : 'false',
+          'aria-pressed': inputLocked ? 'true' : 'false',
+          title: inputLocked ? labels.unlockInput : labels.lockInput,
+          'aria-label': inputLocked ? labels.unlockInput : labels.lockInput,
+          onClick: toggleInputLock,
+        },
+        LockIcon(!inputLocked),
+        React.createElement('span', null, inputLocked ? labels.inputLocked : labels.lockInput),
       ),
       React.createElement(
         'button',
