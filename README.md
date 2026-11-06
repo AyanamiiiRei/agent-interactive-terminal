@@ -41,7 +41,7 @@ npm run build
 
 ### 平台
 
-Linux 和 macOS 直接使用本机 zsh/bash；macOS 未设置 `$SHELL` 时默认 `/bin/zsh`。Windows 自动寻找 `wsl.exe`：可用时在 WSL 里启动 zsh（没装 zsh 就用 bash），并把生成的 rc 翻译成 WSL 路径；找不到 WSL 时退回 PowerShell 7、Windows PowerShell 或 `cmd.exe`。手动选 zsh/bash 但没有 WSL 会明确报错。原生 PowerShell/cmd 没有提示符标记，等待会退回屏幕内容和输出静默判断，精度不如 WSL。
+优先使用 Unix shell（zsh/bash）：Linux 和 macOS 直接使用本机 zsh/bash；macOS 未设置 `$SHELL` 时默认 `/bin/zsh`。Windows 自动寻找 `wsl.exe`：可用时在 WSL 里启动 zsh（没装 zsh 就用 bash），并把生成的 rc 翻译成 WSL 路径；找不到 WSL 时退回 PowerShell 7、Windows PowerShell 或 `cmd.exe`。手动选 zsh/bash 但没有 WSL 会明确报错。原生 PowerShell/cmd 没有提示符标记，等待会退回屏幕内容和输出静默判断，精度不如 WSL。
 
 ## 快速开始
 

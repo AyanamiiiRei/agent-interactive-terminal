@@ -41,7 +41,7 @@ npm run build
 
 ### Platforms
 
-Linux and macOS use the local zsh/bash; macOS falls back to `/bin/zsh` when `$SHELL` is unset. On Windows the launcher looks for `wsl.exe`: when usable it starts zsh (or bash if zsh is missing) inside WSL and translates the generated rc files to WSL paths. Without WSL it falls back to PowerShell 7, Windows PowerShell, or `cmd.exe`. Choosing zsh/bash without WSL fails with an explicit message. Native PowerShell/cmd has no prompt markers, so waits fall back to screen content and output silence: usable, but less precise than WSL.
+Unix shells come first: Linux and macOS use the local zsh/bash; macOS falls back to `/bin/zsh` when `$SHELL` is unset. On Windows the launcher looks for `wsl.exe`: when usable it starts zsh (or bash if zsh is missing) inside WSL and translates the generated rc files to WSL paths. Without WSL it falls back to PowerShell 7, Windows PowerShell, or `cmd.exe`. Choosing zsh/bash without WSL fails with an explicit message. Native PowerShell/cmd has no prompt markers, so waits fall back to screen content and output silence: usable, but less precise than WSL.
 
 ## Quick start
 
