@@ -122,9 +122,19 @@
             "commit": "9314808a27c9f8c07f051930b7bf0770f703fb79"
           },
           "engines": {}
+        },
+        {
+          "version": "0.6.5",
+          "publishTimestamp": 1793931259,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/AyanamiiiRei/agent-interactive-terminal",
+            "commit": "adde8839263d0a120d3c7b454a2dffd97bd88f08"
+          },
+          "engines": {}
         }
       ],
-      "version": "0.6.4"
+      "version": "0.6.5"
     }
   ]
 }
