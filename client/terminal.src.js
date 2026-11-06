@@ -598,6 +598,8 @@ const PANEL_CSS = `
 .ait-panel-add:active{transform:scale(0.94)}
 .ait-panel-add:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
 .ait-panel-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:0}
+.ait-pane{display:none;flex:1;min-height:0;flex-direction:column}
+.ait-pane[data-active="true"]{display:flex}
 .ait-panel-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;margin:10px;padding:36px 24px;text-align:center;border:1px solid var(--ait-panel-line);border-radius:12px;background:radial-gradient(120% 100% at 50% 0%,rgba(242,166,90,0.08),rgba(255,255,255,0.025) 55%,rgba(255,255,255,0.015));color:var(--ait-panel-faint)}
 .ait-panel-empty svg{width:30px;height:30px;margin-bottom:4px;color:var(--ait-accent);opacity:0.9}
 .ait-empty-title{max-width:280px;font-size:14px;line-height:20px;font-weight:600;color:var(--ait-panel-fg)}
@@ -806,12 +808,12 @@ const PANEL_CSS = `
 .ait-panel-tabs::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;z-index:2;background:linear-gradient(90deg,#ff3d8b,#ff9d00,#f5ff3d,#3dff9a,#3de1ff,#7a5cff,#ff3d8b);background-size:220% 100%;opacity:0;pointer-events:none;transition:opacity 350ms ease;filter:drop-shadow(0 0 5px rgba(61,225,255,0.55))}
 .ait-panel-body::before{content:"";position:absolute;left:9%;right:9%;bottom:-8px;height:54px;z-index:0;border-radius:50%;background:linear-gradient(90deg,#ff3d8b,#3de1ff,#7a5cff);filter:blur(24px);opacity:0;pointer-events:none;transition:opacity 400ms ease}
 .ait-panel-body::after{content:"";position:absolute;left:12px;right:12px;bottom:4px;height:3px;z-index:2;border-radius:999px;background:linear-gradient(90deg,#ff3d8b,#ff9d00,#f5ff3d,#3dff9a,#3de1ff,#7a5cff,#ff3d8b);background-size:200% 100%;opacity:0;pointer-events:none;transition:opacity 350ms ease;filter:drop-shadow(0 0 7px rgba(61,225,255,0.55))}
-.ait-panel:has(.ait-terminal[data-agent-active="true"]){box-shadow:0 18px 44px rgba(0,0,0,0.30),0 2px 8px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.05),0 0 28px rgba(61,225,255,0.16),0 0 46px rgba(255,61,139,0.10)}
-.ait-panel:has(.ait-terminal[data-agent-active="true"])::before{opacity:1;animation:ait-rgb-spin 3s linear infinite}
-.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-tabs::before{opacity:1;animation:ait-rgb-sheen 3.2s linear infinite}
-.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-tabs::after{opacity:0.95;animation:ait-rgb-slide 2.2s linear infinite}
-.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-body::before{opacity:0.30;animation:ait-rgb-breathe 3s ease-in-out infinite}
-.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-body::after{opacity:0.95;animation:ait-rgb-slide 2.5s linear infinite reverse}
+.ait-panel:has(.ait-pane[data-active="true"] .ait-terminal[data-agent-active="true"]){box-shadow:0 18px 44px rgba(0,0,0,0.30),0 2px 8px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.05),0 0 28px rgba(61,225,255,0.16),0 0 46px rgba(255,61,139,0.10)}
+.ait-panel:has(.ait-pane[data-active="true"] .ait-terminal[data-agent-active="true"])::before{opacity:1;animation:ait-rgb-spin 3s linear infinite}
+.ait-panel:has(.ait-pane[data-active="true"] .ait-terminal[data-agent-active="true"]) .ait-panel-tabs::before{opacity:1;animation:ait-rgb-sheen 3.2s linear infinite}
+.ait-panel:has(.ait-pane[data-active="true"] .ait-terminal[data-agent-active="true"]) .ait-panel-tabs::after{opacity:0.95;animation:ait-rgb-slide 2.2s linear infinite}
+.ait-panel:has(.ait-pane[data-active="true"] .ait-terminal[data-agent-active="true"]) .ait-panel-body::before{opacity:0.30;animation:ait-rgb-breathe 3s ease-in-out infinite}
+.ait-panel:has(.ait-pane[data-active="true"] .ait-terminal[data-agent-active="true"]) .ait-panel-body::after{opacity:0.95;animation:ait-rgb-slide 2.5s linear infinite reverse}
 @keyframes ait-rgb-spin{to{--ait-rgb-angle:360deg}}
 @keyframes ait-rgb-slide{from{background-position:0% 50%}to{background-position:200% 50%}}
 @keyframes ait-rgb-sheen{from{background-position:200% 0}to{background-position:-200% 0}}
@@ -1053,13 +1055,15 @@ function Segmented(props) {
  * WebSocket stream, plus the settings sheet and the idle-handback indicator.
  */
 export function TerminalView(props) {
-  const { sessionId, terminalId, labels, onNewTab, onCloseTab, autoFocus = true } = props
+  const { sessionId, terminalId, labels, onNewTab, onCloseTab, autoFocus = true, active = true, focusEpoch = 0 } = props
   const hostRef = React.useRef(null)
   const termRef = React.useRef(null)
   const fitRef = React.useRef(null)
   const socketRef = React.useRef(null)
   const writableRef = React.useRef(false)
   const labelsRef = React.useRef(labels)
+  const activeRef = React.useRef(active)
+  activeRef.current = active
   const onCloseRef = React.useRef(onCloseTab)
   const onNewRef = React.useRef(onNewTab)
   const settingsRef = React.useRef(null)
@@ -1400,7 +1404,7 @@ export function TerminalView(props) {
     // outside the panel, so in that case only move the caret when the focus is
     // already inside the panel or nowhere in particular.
     const focusTimer = window.setTimeout(() => {
-      if (disposed) return
+      if (disposed || !activeRef.current) return
       if (!autoFocus) {
         const active = document.activeElement
         const inside =
@@ -1439,6 +1443,29 @@ export function TerminalView(props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, terminalId])
+
+  // Switching tabs must not rebuild the xterm or reconnect the attach stream.
+  // Mounted views stay alive; this effect only refits and transfers focus when
+  // one becomes visible again.
+  React.useEffect(() => {
+    const host = hostRef.current
+    const term = termRef.current
+    if (!active) {
+      if (term !== null) term.blur()
+      return undefined
+    }
+    const timer = window.setTimeout(() => {
+      if (host === null || term === null) return
+      try {
+        if (fitRef.current !== null) fitRef.current.fit()
+      } catch {
+        // A hidden or zero-sized host can refuse a fit; the observer retries.
+      }
+      term.scrollToBottom()
+      if (autoFocus) term.focus()
+    }, 40)
+    return () => window.clearTimeout(timer)
+  }, [active, focusEpoch, autoFocus])
 
   // Keep the sweep on while the agent's command runs, then let it fade a
   // moment after the shell settles instead of cutting it at submit time.
@@ -2190,6 +2217,8 @@ export function TerminalPanel(props) {
   const [sessions, setSessions] = React.useState([])
   const [selected, setSelected] = React.useState(null)
   const [error, setError] = React.useState(null)
+  const [focusEpoch, setFocusEpoch] = React.useState(0)
+  const [mounted, setMounted] = React.useState(() => new Set())
   const selectedRef = React.useRef(null)
   const sessionsRef = React.useRef([])
   const closingRef = React.useRef(new Set())
@@ -2220,6 +2249,7 @@ export function TerminalPanel(props) {
         setSessions((prev) => (prev.some((session) => session.id === item.id) ? prev : [...prev, item]))
         autoFocus.current = true
         setSelected(item.id)
+        setFocusEpoch((value) => value + 1)
         setError(null)
       })
       .catch((reason) => {
@@ -2233,6 +2263,7 @@ export function TerminalPanel(props) {
   const selectSession = (id) => {
     autoFocus.current = true
     setSelected(id)
+    setFocusEpoch((value) => value + 1)
   }
 
   const closeSession = React.useCallback(
@@ -2250,6 +2281,7 @@ export function TerminalPanel(props) {
         const neighbor = remaining[index] ?? remaining[index - 1] ?? null
         autoFocus.current = true
         setSelected(neighbor === null ? null : neighbor.id)
+        setFocusEpoch((value) => value + 1)
       }
       api.close(id).catch(() => {})
       const timer = window.setTimeout(() => {
@@ -2420,7 +2452,56 @@ export function TerminalPanel(props) {
     return () => wrap.removeEventListener('wheel', onWheel)
   }, [])
 
-  const current = sessions.find((session) => session.id === selected) || null
+  const activeId =
+    selected !== null && sessions.some((session) => session.id === selected)
+      ? selected
+      : (sessions[0]?.id ?? null)
+
+  // Mount a terminal the first time it becomes active, then keep it alive so
+  // switching tabs never tears down the xterm or reconnects its WebSocket.
+  React.useEffect(() => {
+    if (activeId === null) return
+    setMounted((previous) => {
+      if (previous.has(activeId)) return previous
+      const next = new Set(previous)
+      next.add(activeId)
+      return next
+    })
+  }, [activeId])
+
+  React.useEffect(() => {
+    setMounted((previous) => {
+      const alive = new Set(sessions.map((session) => session.id))
+      let changed = false
+      const next = new Set()
+      for (const id of previous) {
+        if (alive.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed ? next : previous
+    })
+  }, [sessions])
+
+  // Warm the other sessions once the active pane has settled. They stay
+  // hidden but keep their xterm buffer and attach stream alive, so even the
+  // first click on another tab is instant.
+  React.useEffect(() => {
+    if (sessions.length <= 1) return undefined
+    const timer = window.setTimeout(() => {
+      setMounted((previous) => {
+        let changed = false
+        const next = new Set(previous)
+        for (const session of sessions) {
+          if (!next.has(session.id)) {
+            next.add(session.id)
+            changed = true
+          }
+        }
+        return changed ? next : previous
+      })
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [sessions])
 
   return React.createElement(
     'section',
@@ -2504,19 +2585,8 @@ export function TerminalPanel(props) {
     React.createElement(
       'div',
       { className: 'ait-panel-body' },
-      current !== null
-        ? React.createElement(TerminalView, {
-            key: current.id,
-            sessionId: sessionId,
-            terminalId: current.id,
-            name: current.name,
-            attachPath: attachPath,
-            labels: labels,
-            autoFocus: autoFocus.current,
-            onNewTab: openNew,
-            onCloseTab: () => closeSession(current.id),
-          })
-        : React.createElement(
+      sessions.length === 0
+        ? React.createElement(
             'div',
             { className: 'ait-panel-empty' },
             React.createElement(
@@ -2532,7 +2602,32 @@ export function TerminalPanel(props) {
               { type: 'button', className: 'ait-panel-open', onClick: openNew },
               labels.newTerminal,
             ),
-          ),
+          )
+        : sessions.map((session) => {
+            const active = session.id === activeId
+            if (!active && !mounted.has(session.id)) return null
+            return React.createElement(
+              'div',
+              {
+                key: session.id,
+                className: 'ait-pane',
+                'data-active': active ? 'true' : 'false',
+              },
+              React.createElement(TerminalView, {
+                key: session.id,
+                sessionId: sessionId,
+                terminalId: session.id,
+                name: session.name,
+                attachPath: attachPath,
+                labels: labels,
+                active: active,
+                focusEpoch: active ? focusEpoch : 0,
+                autoFocus: active && autoFocus.current,
+                onNewTab: openNew,
+                onCloseTab: () => closeSession(session.id),
+              }),
+            )
+          }),
     ),
   )
 }
