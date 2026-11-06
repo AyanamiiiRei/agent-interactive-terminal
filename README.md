@@ -10,11 +10,11 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml"><img src="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node"></a>
-  <img src="https://img.shields.io/badge/tests-69%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-73%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
-> DeepSeek Harness bundle：八个 `terminal_*` 工具、一块实时共享的 xterm 面板，以及不经过模型上下文的密码交接。69 个测试在 Linux 的 Node 20/22 上通过；完整设计见 [docs/design.zh.md](docs/design.zh.md)。
+> DeepSeek Harness bundle：八个 `terminal_*` 工具、一块实时共享的 xterm 面板，以及不经过模型上下文的密码交接。73 个测试在 Linux 的 Node 20/22 上通过；完整设计见 [docs/design.zh.md](docs/design.zh.md)。
 
 ## 为什么
 
@@ -55,8 +55,8 @@ npm run attach                 # 浏览器 attach 示例，打开终端里打印
 
 终端图标在会话标题栏。点开后右侧是 xterm 面板，会话标签按当前顺序编号，中键关闭；agent 活跃时，上边栏和终端下方会环绕 RGB 流光。当前标签的租约、只读、断开和密码等待都显示在状态胶囊里。
 
-- **键盘归属**：人敲键即接管，停手几秒自动交回；agent 写入时面板自动切到对应会话。
-- **访问级别**：`collaborate`（协作）、`observe`（只读）、`sealed`（读写都断开，列表里只剩脱敏记录）。
+- **键盘归属**：人敲键即接管，停手几秒自动交回；agent 的写入会在这段时间排队，上边栏显示排队命令和取消按钮，交还后按顺序执行。
+- **访问级别**：`collaborate`（协作）、`observe`（只读）、`sealed`（读写都断开，列表里只剩脱敏记录）。只读和断开都会拒绝排队，并返回不同的错误。
 - **工具策略**：默认交互式优先，也可切换为一次性命令优先或强制交互式；后者会隐藏 agent 的 bash。另有“主动使用交互式终端”开关，让 REPL 任务先进入 python 等交互环境。
 - **设置**：主题、字体、光标、快捷键、回滚、响铃、复制粘贴、租约超时都在终端设置里；主题默认跟随 DSH，也可固定成某一套调色板。
 
@@ -107,7 +107,7 @@ src/tools/         八个工具
 src/attach.ts      浏览器双工 attach
 src/bridge.ts      面板使用的回环 HTTP 桥
 client/            DSH 浏览器半边与 xterm 面板
-test/              69 个测试
+test/              73 个测试
 ```
 
 ## 状态

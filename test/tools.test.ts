@@ -66,6 +66,24 @@ describe('tools', () => {
     }
   })
 
+  it('queues a send while a person holds the keyboard', async () => {
+    const open = await tools.get('terminal_open')!.execute({ name: 'queue-test', shell: '/bin/bash' })
+    const id = /\[session: (\d+)\]/.exec(open.text)?.[1] as string
+    const session = registry.require(id)
+    try {
+      session.takeOver()
+      const send = await tools.get('terminal_send')!.execute({ sessionId: id, text: 'echo queued-tool' })
+      expect(send.text).toContain('[queued:')
+      expect(send.text).toContain('control is held by the user')
+      expect(session.pending).toHaveLength(1)
+      expect(session.cancelPending(undefined)).toBe(1)
+      expect(session.pending).toHaveLength(0)
+    } finally {
+      session.handBack()
+      await registry.close(id)
+    }
+  })
+
   it('enforces the session limit', async () => {
     const first = await tools.get('terminal_open')!.execute({ shell: '/bin/bash' })
     const second = await tools.get('terminal_open')!.execute({ shell: '/bin/bash' })

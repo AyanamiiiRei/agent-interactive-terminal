@@ -122,7 +122,7 @@ export function createTerminalTools(
     {
       name: 'terminal_send',
       description:
-        'Write text to a terminal session and wait for it to settle. By default Enter is submitted. The call returns when a pattern matches, the program waits for input, the shell is idle, the screen goes quiet, or the timeout expires; check the wait outcome before assuming a command finished. When the person has made the session read-only or sealed it, the call fails with READ_ONLY or SEALED instead of writing.',
+        'Write text to a terminal session and wait for it to settle. By default Enter is submitted. The call returns when a pattern matches, the program waits for input, the shell is idle, the screen goes quiet, or the timeout expires; check the wait outcome before assuming a command finished. While a person holds the keyboard, the write is queued and the call returns a queued marker immediately; call terminal_wait for the result. When the person has made the session read-only or sealed it, the call fails with READ_ONLY or SEALED instead of queueing.',
       parameters: {
         type: 'object',
         properties: {
@@ -153,7 +153,12 @@ export function createTerminalTools(
         }
         const paste = optionalBoolean(input, 'paste')
         if (paste !== undefined) writeOptions.paste = paste
-        await session.write(requiredString(input, 'text'), writeOptions)
+        const writeOutcome = await session.write(requiredString(input, 'text'), writeOptions)
+        if (writeOutcome.queued) {
+          const snapshot = session.snapshot()
+          const meta = `[queued: ${writeOutcome.pendingId ?? '?'}] [pending: ${writeOutcome.pendingCount ?? 1}] control is held by the user; the command will run after handback. The user can cancel it.\n${snapshot.status}`
+          return render(snapshot.view, meta, snapshot.revision)
+        }
         const result = await session.wait(waitSpec(input))
         const meta = `[wait: ${result.outcome}] [phase: ${result.phase}] [elapsed: ${result.elapsedMs}ms]\n${result.status}`
         return render(forceView(session, result.view, input, 'auto'), meta, result.revision)

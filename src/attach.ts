@@ -29,6 +29,7 @@ type ClientMessage =
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'takeover' }
   | { type: 'handback' }
+  | { type: 'cancel-pending'; id?: number }
   | { type: 'access'; value: AgentAccess }
   | { type: 'ping' }
 
@@ -95,6 +96,8 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
       agentAt: session.agentAt,
       peekAt: session.peekAt,
       access: session.agentAccess,
+      pending: session.pending,
+      canceledPending: session.canceledPending,
     })
     const broadcastStatus = (): void => {
       if (statusTimer !== undefined) return
@@ -221,6 +224,11 @@ export function createAttachUpgrade(deps: BridgeDeps): AttachUpgrade {
           } catch {
             // The shell exited while the click was in flight.
           }
+          return
+        }
+        case 'cancel-pending': {
+          const id = typeof message.id === 'number' && Number.isInteger(message.id) ? message.id : undefined
+          session.cancelPending(id)
           return
         }
         case 'access': {

@@ -92,4 +92,41 @@ describe('TerminalSession', () => {
     expect(session.snapshot().alt).toBe(false)
     expect(session.phase).toBe('idle')
   })
+
+  it('queues an agent command while a person holds the keyboard', async () => {
+    const session = await open()
+    session.takeOver()
+    const outcome = await session.write('echo queued-demo')
+    expect(outcome.queued).toBe(true)
+    expect(session.pending).toHaveLength(1)
+    expect(session.pending[0]?.command).toContain('echo queued-demo')
+
+    session.handBack()
+    const result = await session.wait({ match: ['queued-demo'], timeoutMs: 10_000 })
+    expect(result.view.text).toContain('queued-demo')
+    expect(session.pending).toHaveLength(0)
+  })
+
+  it('lets a person cancel a queued agent command', async () => {
+    const session = await open()
+    session.takeOver()
+    const outcome = await session.write('echo canceled-demo')
+    expect(outcome.queued).toBe(true)
+    expect(session.cancelPending(outcome.pendingId)).toBe(1)
+    expect(session.pending).toHaveLength(0)
+    expect(session.canceledPending?.command).toContain('echo canceled-demo')
+
+    session.handBack()
+    await session.wait({ quietMs: 200, timeoutMs: 2000 })
+    expect(session.snapshot().view.text).not.toContain('canceled-demo')
+  })
+
+  it('keeps read-only and sealed distinct for the agent', async () => {
+    const session = await open()
+    session.setAgentAccess('observe')
+    await expect(session.write('echo no-write')).rejects.toThrow(/read-only/i)
+    session.setAgentAccess('sealed')
+    await expect(session.write('echo no-write')).rejects.toThrow(/sealed/i)
+    expect(() => session.snapshot()).toThrow(/sealed/i)
+  })
 })

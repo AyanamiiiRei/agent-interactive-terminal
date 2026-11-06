@@ -74,7 +74,8 @@ describe('shell integration', () => {
   it.skipIf(zsh === undefined)('reports idle promptly on a zsh prompt', async () => {
     const started = Date.now()
     const session = await open(zsh as string)
-    expect(session.phase).toBe('idle')
+    const settled = await session.wait({ settleOn: ['idle'], timeoutMs: 5000 })
+    expect(settled.phase).toBe('idle')
     expect(Date.now() - started).toBeLessThan(5000)
     await session.write('true')
     const result = await session.wait({ timeoutMs: 5000 })

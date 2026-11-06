@@ -700,6 +700,13 @@ const PANEL_CSS = `
 .ait-cmd{display:flex;align-items:center;gap:6px;min-height:18px;padding:6px 12px 0;flex:none;overflow:hidden;font-size:12px;line-height:16px;color:var(--ait-panel-faint)}
 .ait-cmd-tag{flex:none;font-size:10.5px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ait-accent)}
 .ait-cmd-text{min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ait-panel-muted)}
+.ait-pending{display:flex;align-items:center;gap:7px;min-height:30px;padding:4px 10px;flex:none;border-bottom:1px solid var(--ait-accent-line);background:var(--ait-accent-soft);font-size:12px;line-height:16px;overflow:hidden}
+.ait-pending-tag{flex:none;font-size:10.5px;font-weight:600;letter-spacing:0.04em;color:var(--ait-accent)}
+.ait-pending-text{min-width:0;flex:1;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ait-panel-fg)}
+.ait-pending-count{flex:none;font-size:10.5px;color:var(--ait-panel-muted)}
+.ait-pending-cancel{flex:none;height:22px;padding:0 7px;border:1px solid var(--ait-accent-line);border-radius:6px;background:var(--ait-shell-control);color:var(--ait-panel-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease}
+.ait-pending-cancel:hover{border-color:var(--ait-accent);background:var(--ait-accent-line);color:var(--ait-panel-fg)}
+.ait-pending-cancel:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
 .ait-notice{display:flex;align-items:center;gap:8px;min-height:32px;margin:8px 10px 0;padding:7px 10px;flex:none;border:1px solid var(--ait-panel-line);border-radius:8px;background:rgba(255,255,255,0.035);font-size:12px;line-height:16px;color:var(--ait-panel-muted)}
 .ait-notice::before{content:"";width:6px;height:6px;flex:none;border-radius:50%;background:var(--ait-panel-faint)}
 .ait-secret{display:flex;align-items:center;gap:8px;width:auto;min-height:36px;margin:8px 10px 0;padding:7px 10px;flex:none;border:1px solid rgba(245,194,17,0.28);border-radius:8px;background:rgba(245,194,17,0.08);color:var(--ait-panel-fg);font:inherit;font-size:12px;line-height:16px;text-align:left;cursor:pointer;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1)}
@@ -1140,6 +1147,8 @@ export function TerminalView(props) {
     commandAt: 0,
     peekAt: 0,
     access: 'collaborate',
+    pending: [],
+    canceledPending: null,
   })
   const [agentPulse, setAgentPulse] = React.useState(false)
   const [peekPulse, setPeekPulse] = React.useState(false)
@@ -1226,6 +1235,22 @@ export function TerminalView(props) {
       const commandAt = typeof message.commandAt === 'number' ? message.commandAt : 0
       const peekAt = typeof message.peekAt === 'number' ? message.peekAt : 0
       const access = message.access === 'observe' || message.access === 'sealed' ? message.access : 'collaborate'
+      const pending = Array.isArray(message.pending)
+        ? message.pending
+            .filter((item) => item !== null && typeof item === 'object' && Number.isFinite(item.id))
+            .slice(0, 8)
+            .map((item) => ({
+              id: Number(item.id),
+              command: typeof item.command === 'string' ? item.command : '',
+              at: Number.isFinite(item.at) ? Number(item.at) : 0,
+            }))
+        : []
+      const canceledPending =
+        message.canceledPending !== null &&
+        typeof message.canceledPending === 'object' &&
+        typeof message.canceledPending.command === 'string'
+          ? { id: Number(message.canceledPending.id) || 0, command: message.canceledPending.command }
+          : null
       const next = {
         phase: message.phase || 'running',
         holder: (message.lease && message.lease.holder) || 'agent',
@@ -1237,6 +1262,8 @@ export function TerminalView(props) {
         commandAt,
         peekAt,
         access,
+        pending,
+        canceledPending,
       }
       setStatus(next)
       writableRef.current = next.holder === 'human'
@@ -1748,7 +1775,29 @@ export function TerminalView(props) {
         ),
       ),
     ),
-    status.command !== '' && !readOnly && !sealed && !status.suspended && status.phase !== 'exited'
+    status.pending.length > 0 && !readOnly && !sealed && !status.suspended && status.phase !== 'exited'
+      ? React.createElement(
+          'div',
+          { className: 'ait-pending', title: labels.queueHint },
+          React.createElement('span', { className: 'ait-pending-tag' }, labels.queuedTag),
+          React.createElement('code', { className: 'ait-pending-text' }, status.pending[0].command),
+          status.pending.length > 1
+            ? React.createElement('span', { className: 'ait-pending-count' }, `+${status.pending.length - 1}`)
+            : null,
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'ait-pending-cancel',
+              title: labels.cancelQueued,
+              'aria-label': labels.cancelQueued,
+              onClick: () => send({ type: 'cancel-pending', id: status.pending[0].id }),
+            },
+            labels.cancelQueued,
+          ),
+        )
+      : null,
+    status.pending.length === 0 && status.command !== '' && !readOnly && !sealed && !status.suspended && status.phase !== 'exited'
       ? React.createElement(
           'div',
           { className: 'ait-cmd', title: status.command },

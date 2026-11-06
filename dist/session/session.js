@@ -44,6 +44,8 @@ const KEY_SIGNALS = {
     'ctrl-c': 'SIGINT',
     'ctrl-z': 'SIGTSTP',
 };
+/** Cap the queue so a confused agent cannot pile up an unbounded backlog. */
+const MAX_PENDING = 8;
 export class TerminalSession {
     id;
     name;
@@ -75,6 +77,10 @@ export class TerminalSession {
     lastAgentWriteAtValue = 0;
     peekAtValue = 0;
     agentAccessValue = 'collaborate';
+    pendingCommands = [];
+    pendingSeq = 0;
+    draining = false;
+    canceledPendingValue = null;
     lastExitCode = null;
     lastExitSignal = null;
     pollTimer;
@@ -126,7 +132,7 @@ export class TerminalSession {
         return { ...this.leaseState };
     }
     /**
-     * Hand the keyboard to a person. Agent writes fail with LEASE_DENIED and an
+     * Hand the keyboard to a person. Agent writes are queued (not refused) and an
      * agent wait settles with `human_took_over` until `handBack`.
      */
     takeOver() {
@@ -135,12 +141,46 @@ export class TerminalSession {
         this.recordAudit({ at: Date.now(), kind: 'lease', origin: 'human', bytes: 0, preview: '', detail: 'takeover' });
         this.notify();
     }
-    /** Return the keyboard to the agent. Only a person should call this. */
+    /** Return the keyboard to the agent and drain anything the agent queued. */
     handBack() {
         this.assertUsable();
         this.leaseState = { holder: 'agent', since: Date.now(), reason: 'handback', suspended: false };
         this.recordAudit({ at: Date.now(), kind: 'lease', origin: 'human', bytes: 0, preview: '', detail: 'handback' });
+        void this.drainPending();
         this.notify();
+    }
+    /** Agent commands waiting for the person to release the keyboard. */
+    get pending() {
+        return this.pendingCommands.map((item) => ({
+            id: item.id,
+            command: previewOf(item.text),
+            at: item.at,
+        }));
+    }
+    /** The most recently canceled queued command, if any. */
+    get canceledPending() {
+        return this.canceledPendingValue === null ? null : { ...this.canceledPendingValue };
+    }
+    /**
+     * Remove one queued command, or the whole queue when `id` is omitted. Only a
+     * person should call this; the agent cannot cancel its own queue.
+     */
+    cancelPending(id) {
+        if (this.pendingCommands.length === 0)
+            return 0;
+        if (id === undefined) {
+            const removed = this.pendingCommands.splice(0);
+            this.rememberCanceled(removed[0]);
+            this.notify();
+            return removed.length;
+        }
+        const index = this.pendingCommands.findIndex((item) => item.id === id);
+        if (index < 0)
+            return 0;
+        const [removed] = this.pendingCommands.splice(index, 1);
+        this.rememberCanceled(removed);
+        this.notify();
+        return 1;
     }
     /**
      * Suspend the agent because the next input is a secret only a person may
@@ -206,6 +246,10 @@ export class TerminalSession {
         if (next === this.agentAccessValue)
             return;
         this.agentAccessValue = next;
+        if (next !== 'collaborate' && this.pendingCommands.length > 0) {
+            const removed = this.pendingCommands.splice(0);
+            this.rememberCanceled(removed[0]);
+        }
         this.recordAudit({
             at: Date.now(),
             kind: 'access',
@@ -296,16 +340,42 @@ export class TerminalSession {
             throw new SessionError('shell exited during startup', 'SPAWN_FAILED');
         }
     }
-    /** Write text, optionally submitting Enter, and return immediately. */
+    /** Write text, optionally submitting Enter. A person's turn queues the agent. */
     async write(text, options = {}) {
         this.assertUsable();
         const origin = options.origin ?? 'agent';
         if (origin === 'agent') {
             this.assertAgentMayWrite();
-            if (this.leaseState.holder !== 'agent' || this.leaseState.suspended) {
+            if (this.leaseState.suspended) {
                 throw new SessionError('control is held by the user', 'LEASE_DENIED');
             }
+            if (this.leaseState.holder !== 'agent') {
+                const pending = this.enqueue(text, options);
+                return { queued: true, pendingId: pending.id, pendingCount: this.pendingCommands.length };
+            }
         }
+        this.writeNow(text, options);
+        return { queued: false };
+    }
+    /** Put an agent write behind the person's current keyboard turn. */
+    enqueue(text, options) {
+        if (this.pendingCommands.length >= MAX_PENDING) {
+            throw new SessionError('too many agent commands are already queued', 'QUEUE_FULL');
+        }
+        const pending = {
+            id: ++this.pendingSeq,
+            text,
+            submit: options.submit ?? true,
+            ...(options.paste === undefined ? {} : { paste: options.paste }),
+            at: Date.now(),
+        };
+        this.pendingCommands.push(pending);
+        this.canceledPendingValue = null;
+        this.notify();
+        return pending;
+    }
+    writeNow(text, options = {}) {
+        const origin = options.origin ?? 'agent';
         const submit = options.submit ?? true;
         let payload = text;
         const usePaste = options.paste ?? (text.includes('\n') && this.bracketedPaste);
@@ -344,10 +414,51 @@ export class TerminalSession {
         }
         this.refreshPhase();
     }
+    rememberCanceled(item) {
+        if (item === undefined)
+            return;
+        this.canceledPendingValue = {
+            id: item.id,
+            command: previewOf(item.text),
+            at: Date.now(),
+        };
+    }
+    /** Send commands the agent queued while a person held the keyboard. */
+    async drainPending() {
+        if (this.draining)
+            return;
+        this.draining = true;
+        try {
+            while (this.pendingCommands.length > 0 &&
+                this.leaseState.holder === 'agent' &&
+                !this.leaseState.suspended &&
+                this.agentAccessValue === 'collaborate' &&
+                !this.closed &&
+                this.phaseValue !== 'exited') {
+                const pending = this.pendingCommands.shift();
+                if (pending === undefined)
+                    break;
+                this.writeNow(pending.text, {
+                    submit: pending.submit,
+                    ...(pending.paste === undefined ? {} : { paste: pending.paste }),
+                    origin: 'agent',
+                });
+                this.notify();
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+        }
+        finally {
+            this.draining = false;
+            this.notify();
+        }
+    }
     /** Deliver one named key, using a real signal where a person would send one. */
     async press(key, repeat = 1) {
         this.assertUsable();
         this.assertAgentMayWrite();
+        if (this.leaseState.holder !== 'agent' || this.leaseState.suspended) {
+            throw new SessionError('control is held by the user', 'LEASE_DENIED');
+        }
         if (!Number.isInteger(repeat) || repeat < 1 || repeat > 50) {
             throw new Error('repeat must be an integer between 1 and 50');
         }
@@ -522,9 +633,14 @@ export class TerminalSession {
             `${this.screen.cols}x${this.screen.rows}`,
             `alt=${this.screen.alt ? 'yes' : 'no'}`,
             `lease=${lease}`,
+            `access=${this.agentAccessValue}`,
+            `pending=${this.pendingCommands.length}`,
             `phase=${this.phaseValue}`,
             `rev=${this.revision}`,
             `quiet=${quiet}s`,
+            ...(this.canceledPendingValue === null
+                ? []
+                : [`canceled=${this.canceledPendingValue.command}`]),
         ].join(' | ');
     }
     /** Styled screen for a browser terminal attaching to this session. */

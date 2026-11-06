@@ -12,6 +12,7 @@ import type {
   AuditEntry,
   NamedKey,
   OpenOptions,
+  QueuedCommand,
   SessionPhase,
   TerminalView,
   AgentAccess,
@@ -19,6 +20,7 @@ import type {
   WaitResult,
   WaitSpec,
   WriteOrigin,
+  WriteOutcome,
 } from '../types.js'
 import { buildShellLaunch, type ShellLaunch } from './shell.js'
 
@@ -86,6 +88,18 @@ const KEY_SIGNALS: Partial<Record<NamedKey, NodeJS.Signals>> = {
   'ctrl-z': 'SIGTSTP',
 }
 
+/** A command waiting for a person to finish their turn at the keyboard. */
+interface PendingCommand {
+  id: number
+  text: string
+  submit: boolean
+  paste?: boolean
+  at: number
+}
+
+/** Cap the queue so a confused agent cannot pile up an unbounded backlog. */
+const MAX_PENDING = 8
+
 export class TerminalSession {
   readonly id: string
   readonly name: string | undefined
@@ -119,6 +133,10 @@ export class TerminalSession {
   private lastAgentWriteAtValue = 0
   private peekAtValue = 0
   private agentAccessValue: AgentAccess = 'collaborate'
+  private readonly pendingCommands: PendingCommand[] = []
+  private pendingSeq = 0
+  private draining = false
+  private canceledPendingValue: QueuedCommand | null = null
   private lastExitCode: number | null = null
   private lastExitSignal: number | null = null
   private pollTimer: NodeJS.Timeout | undefined
@@ -178,7 +196,7 @@ export class TerminalSession {
   }
 
   /**
-   * Hand the keyboard to a person. Agent writes fail with LEASE_DENIED and an
+   * Hand the keyboard to a person. Agent writes are queued (not refused) and an
    * agent wait settles with `human_took_over` until `handBack`.
    */
   takeOver(): void {
@@ -188,12 +206,47 @@ export class TerminalSession {
     this.notify()
   }
 
-  /** Return the keyboard to the agent. Only a person should call this. */
+  /** Return the keyboard to the agent and drain anything the agent queued. */
   handBack(): void {
     this.assertUsable()
     this.leaseState = { holder: 'agent', since: Date.now(), reason: 'handback', suspended: false }
     this.recordAudit({ at: Date.now(), kind: 'lease', origin: 'human', bytes: 0, preview: '', detail: 'handback' })
+    void this.drainPending()
     this.notify()
+  }
+
+  /** Agent commands waiting for the person to release the keyboard. */
+  get pending(): readonly QueuedCommand[] {
+    return this.pendingCommands.map((item) => ({
+      id: item.id,
+      command: previewOf(item.text),
+      at: item.at,
+    }))
+  }
+
+  /** The most recently canceled queued command, if any. */
+  get canceledPending(): QueuedCommand | null {
+    return this.canceledPendingValue === null ? null : { ...this.canceledPendingValue }
+  }
+
+  /**
+   * Remove one queued command, or the whole queue when `id` is omitted. Only a
+   * person should call this; the agent cannot cancel its own queue.
+   */
+  cancelPending(id?: number): number {
+    if (this.pendingCommands.length === 0) return 0
+    if (id === undefined) {
+      const removed = this.pendingCommands.splice(0)
+      this.rememberCanceled(removed[0])
+      this.notify()
+      return removed.length
+    }
+    const index = this.pendingCommands.findIndex((item) => item.id === id)
+    if (index < 0) return 0
+    const [removed] = this.pendingCommands.splice(index, 1)
+    this.rememberCanceled(removed)
+    this.notify()
+    return 1
   }
 
   /**
@@ -270,6 +323,10 @@ export class TerminalSession {
     }
     if (next === this.agentAccessValue) return
     this.agentAccessValue = next
+    if (next !== 'collaborate' && this.pendingCommands.length > 0) {
+      const removed = this.pendingCommands.splice(0)
+      this.rememberCanceled(removed[0])
+    }
     this.recordAudit({
       at: Date.now(),
       kind: 'access',
@@ -369,20 +426,53 @@ export class TerminalSession {
     }
   }
 
-  /** Write text, optionally submitting Enter, and return immediately. */
+  /** Write text, optionally submitting Enter. A person's turn queues the agent. */
   async write(
     text: string,
     options: { submit?: boolean; paste?: boolean; origin?: WriteOrigin } = {},
-  ): Promise<void> {
+  ): Promise<WriteOutcome> {
     this.assertUsable()
     const origin = options.origin ?? 'agent'
     if (origin === 'agent') {
       this.assertAgentMayWrite()
-      if (this.leaseState.holder !== 'agent' || this.leaseState.suspended) {
+      if (this.leaseState.suspended) {
         throw new SessionError('control is held by the user', 'LEASE_DENIED')
       }
+      if (this.leaseState.holder !== 'agent') {
+        const pending = this.enqueue(text, options)
+        return { queued: true, pendingId: pending.id, pendingCount: this.pendingCommands.length }
+      }
     }
+    this.writeNow(text, options)
+    return { queued: false }
+  }
 
+  /** Put an agent write behind the person's current keyboard turn. */
+  private enqueue(
+    text: string,
+    options: { submit?: boolean; paste?: boolean },
+  ): PendingCommand {
+    if (this.pendingCommands.length >= MAX_PENDING) {
+      throw new SessionError('too many agent commands are already queued', 'QUEUE_FULL')
+    }
+    const pending: PendingCommand = {
+      id: ++this.pendingSeq,
+      text,
+      submit: options.submit ?? true,
+      ...(options.paste === undefined ? {} : { paste: options.paste }),
+      at: Date.now(),
+    }
+    this.pendingCommands.push(pending)
+    this.canceledPendingValue = null
+    this.notify()
+    return pending
+  }
+
+  private writeNow(
+    text: string,
+    options: { submit?: boolean; paste?: boolean; origin?: WriteOrigin } = {},
+  ): void {
+    const origin = options.origin ?? 'agent'
     const submit = options.submit ?? true
     let payload = text
     const usePaste = options.paste ?? (text.includes('\n') && this.bracketedPaste)
@@ -422,10 +512,51 @@ export class TerminalSession {
     this.refreshPhase()
   }
 
+  private rememberCanceled(item: PendingCommand | undefined): void {
+    if (item === undefined) return
+    this.canceledPendingValue = {
+      id: item.id,
+      command: previewOf(item.text),
+      at: Date.now(),
+    }
+  }
+
+  /** Send commands the agent queued while a person held the keyboard. */
+  private async drainPending(): Promise<void> {
+    if (this.draining) return
+    this.draining = true
+    try {
+      while (
+        this.pendingCommands.length > 0 &&
+        this.leaseState.holder === 'agent' &&
+        !this.leaseState.suspended &&
+        this.agentAccessValue === 'collaborate' &&
+        !this.closed &&
+        this.phaseValue !== 'exited'
+      ) {
+        const pending = this.pendingCommands.shift()
+        if (pending === undefined) break
+        this.writeNow(pending.text, {
+          submit: pending.submit,
+          ...(pending.paste === undefined ? {} : { paste: pending.paste }),
+          origin: 'agent',
+        })
+        this.notify()
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      }
+    } finally {
+      this.draining = false
+      this.notify()
+    }
+  }
+
   /** Deliver one named key, using a real signal where a person would send one. */
   async press(key: NamedKey, repeat = 1): Promise<void> {
     this.assertUsable()
     this.assertAgentMayWrite()
+    if (this.leaseState.holder !== 'agent' || this.leaseState.suspended) {
+      throw new SessionError('control is held by the user', 'LEASE_DENIED')
+    }
     if (!Number.isInteger(repeat) || repeat < 1 || repeat > 50) {
       throw new Error('repeat must be an integer between 1 and 50')
     }
@@ -595,9 +726,14 @@ export class TerminalSession {
       `${this.screen.cols}x${this.screen.rows}`,
       `alt=${this.screen.alt ? 'yes' : 'no'}`,
       `lease=${lease}`,
+      `access=${this.agentAccessValue}`,
+      `pending=${this.pendingCommands.length}`,
       `phase=${this.phaseValue}`,
       `rev=${this.revision}`,
       `quiet=${quiet}s`,
+      ...(this.canceledPendingValue === null
+        ? []
+        : [`canceled=${this.canceledPendingValue.command}`]),
     ].join(' | ')
   }
 

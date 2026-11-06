@@ -55,6 +55,8 @@ export function createAttachUpgrade(deps) {
             agentAt: session.agentAt,
             peekAt: session.peekAt,
             access: session.agentAccess,
+            pending: session.pending,
+            canceledPending: session.canceledPending,
         });
         const broadcastStatus = () => {
             if (statusTimer !== undefined)
@@ -189,6 +191,11 @@ export function createAttachUpgrade(deps) {
                     catch {
                         // The shell exited while the click was in flight.
                     }
+                    return;
+                }
+                case 'cancel-pending': {
+                    const id = typeof message.id === 'number' && Number.isInteger(message.id) ? message.id : undefined;
+                    session.cancelPending(id);
                     return;
                 }
                 case 'access': {

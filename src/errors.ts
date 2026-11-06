@@ -7,6 +7,7 @@ export type SessionErrorCode =
   | 'LEASE_DENIED'
   | 'READ_ONLY'
   | 'SEALED'
+  | 'QUEUE_FULL'
   | 'CLOSED'
   | 'SPAWN_FAILED'
 

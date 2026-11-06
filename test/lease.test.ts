@@ -19,13 +19,15 @@ afterEach(async () => {
 })
 
 describe('control lease', () => {
-  it('denies agent writes while a person holds the keyboard', async () => {
+  it('queues agent writes while a person holds the keyboard', async () => {
     const session = await open()
     session.takeOver()
     expect(session.lease.holder).toBe('human')
     expect(session.statusLine()).toContain('lease=human')
 
-    await expect(session.write('echo denied')).rejects.toMatchObject({ code: 'LEASE_DENIED' })
+    const queued = await session.write('echo queued')
+    expect(queued.queued).toBe(true)
+    expect(session.pending).toHaveLength(1)
 
     await session.write('echo human-ok', { origin: 'human' })
     const during = await session.wait({ timeoutMs: 5000 })
@@ -33,10 +35,10 @@ describe('control lease', () => {
 
     session.handBack()
     expect(session.lease.holder).toBe('agent')
-    await session.write('echo agent-ok')
-    const after = await session.wait({ match: ['agent-ok'], timeoutMs: 8000 })
+    const after = await session.wait({ match: ['queued', 'human-ok'], timeoutMs: 8000 })
     expect(after.outcome).toBe('matched')
-    expect(after.view.text).toContain('agent-ok')
+    expect(after.view.text).toContain('queued')
+    expect(after.view.text).toContain('human-ok')
   })
 
   it('suspends the agent at a credential prompt', async () => {

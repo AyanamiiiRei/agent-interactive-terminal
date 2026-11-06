@@ -10,11 +10,11 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml"><img src="https://github.com/AyanamiiiRei/agent-interactive-terminal/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node"></a>
-  <img src="https://img.shields.io/badge/tests-69%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-73%20passing-brightgreen" alt="Tests">
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
-> A DeepSeek Harness bundle: eight `terminal_*` tools, a live shared xterm panel, and password handoff that never enters the model context. Sixty-nine tests pass on Linux with Node 20/22; the full design is in [docs/design.zh.md](docs/design.zh.md).
+> A DeepSeek Harness bundle: eight `terminal_*` tools, a live shared xterm panel, and password handoff that never enters the model context. Seventy-three tests pass on Linux with Node 20/22; the full design is in [docs/design.zh.md](docs/design.zh.md).
 
 ## Why
 
@@ -55,8 +55,8 @@ npm run attach                 # browser attach demo, open the printed address
 
 The terminal icon lives in the session header. Opening it shows an xterm panel on the right; session tabs are numbered in their current order and close on middle click. While the agent is active, the top bar and the area below the terminal carry an RGB running light.
 
-- **Keyboard ownership**: typing takes the lease; a few idle seconds hand it back. Agent writes switch the panel to that session.
-- **Access levels**: `collaborate`, `observe` (read-only), and `sealed` (no read or write; the list keeps only a redacted record).
+- **Keyboard ownership**: typing takes the lease; a few idle seconds hand it back. Agent writes queue during that window, with the queued command and a cancel button in the top bar, then drain in order after handback.
+- **Access levels**: `collaborate`, `observe` (read-only), and `sealed` (no read or write; the list keeps only a redacted record). Read-only and sealed refuse queueing and return distinct errors.
 - **Tool policy**: interactive first by default; one-shot first and terminal only are the alternatives. Terminal only hides bash from the agent. A separate switch steers REPL work into python and similar interactive sessions.
 - **Settings**: theme, font, cursor, shortcuts, scrollback, bell, copy/paste, and lease timeout. The theme follows DSH by default and can be pinned to a fixed palette.
 
@@ -107,7 +107,7 @@ src/tools/         the eight tools
 src/attach.ts      browser duplex attach stream
 src/bridge.ts      loopback HTTP bridge used by the panel
 client/            DSH browser half and xterm panel
-test/              69 tests
+test/              73 tests
 ```
 
 ## Status

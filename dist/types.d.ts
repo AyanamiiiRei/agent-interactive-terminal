@@ -72,6 +72,21 @@ export interface AuditEntry {
 }
 /** How much of a session the agent may use; the person owns the terminal. */
 export type AgentAccess = 'collaborate' | 'observe' | 'sealed';
+/** One agent command waiting for a person to release the keyboard. */
+export interface QueuedCommand {
+    /** Monotonic queue id, unique within the session. */
+    id: number;
+    /** Single-line preview of the queued text. */
+    command: string;
+    /** When the command was queued, in epoch milliseconds. */
+    at: number;
+}
+/** Result of one write. A queued write never reached the PTY yet. */
+export interface WriteOutcome {
+    queued: boolean;
+    pendingId?: number;
+    pendingCount?: number;
+}
 /** Options for opening a session. */
 export interface OpenOptions {
     /** Display name, unique within the registry when provided. */

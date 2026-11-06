@@ -1,4 +1,4 @@
-import type { AuditEntry, NamedKey, OpenOptions, SessionPhase, TerminalView, AgentAccess, WaitResult, WaitSpec, WriteOrigin } from '../types.js';
+import type { AuditEntry, NamedKey, OpenOptions, QueuedCommand, SessionPhase, TerminalView, AgentAccess, WaitResult, WaitSpec, WriteOrigin, WriteOutcome } from '../types.js';
 /** How a session starts. The id is minted by the registry. */
 export interface SessionInit extends OpenOptions {
     id: string;
@@ -56,6 +56,10 @@ export declare class TerminalSession {
     private lastAgentWriteAtValue;
     private peekAtValue;
     private agentAccessValue;
+    private readonly pendingCommands;
+    private pendingSeq;
+    private draining;
+    private canceledPendingValue;
     private lastExitCode;
     private lastExitSignal;
     private pollTimer;
@@ -72,12 +76,21 @@ export declare class TerminalSession {
     get phase(): SessionPhase;
     get lease(): LeaseState;
     /**
-     * Hand the keyboard to a person. Agent writes fail with LEASE_DENIED and an
+     * Hand the keyboard to a person. Agent writes are queued (not refused) and an
      * agent wait settles with `human_took_over` until `handBack`.
      */
     takeOver(): void;
-    /** Return the keyboard to the agent. Only a person should call this. */
+    /** Return the keyboard to the agent and drain anything the agent queued. */
     handBack(): void;
+    /** Agent commands waiting for the person to release the keyboard. */
+    get pending(): readonly QueuedCommand[];
+    /** The most recently canceled queued command, if any. */
+    get canceledPending(): QueuedCommand | null;
+    /**
+     * Remove one queued command, or the whole queue when `id` is omitted. Only a
+     * person should call this; the agent cannot cancel its own queue.
+     */
+    cancelPending(id?: number): number;
     /**
      * Suspend the agent because the next input is a secret only a person may
      * provide. Password detection calls this automatically; a host can call it
@@ -112,12 +125,18 @@ export declare class TerminalSession {
         rows: number;
     };
     private start;
-    /** Write text, optionally submitting Enter, and return immediately. */
+    /** Write text, optionally submitting Enter. A person's turn queues the agent. */
     write(text: string, options?: {
         submit?: boolean;
         paste?: boolean;
         origin?: WriteOrigin;
-    }): Promise<void>;
+    }): Promise<WriteOutcome>;
+    /** Put an agent write behind the person's current keyboard turn. */
+    private enqueue;
+    private writeNow;
+    private rememberCanceled;
+    /** Send commands the agent queued while a person held the keyboard. */
+    private drainPending;
     /** Deliver one named key, using a real signal where a person would send one. */
     press(key: NamedKey, repeat?: number): Promise<void>;
     /** Wait for one of several conditions. The first satisfied one settles. */
