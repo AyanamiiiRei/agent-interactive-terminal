@@ -315,6 +315,20 @@ function paletteOf(key) {
   return THEMES[key] !== undefined ? THEMES[key].theme : THEMES.dark.theme
 }
 
+/** True when a palette background is light enough to need dark chrome text. */
+function isLightPalette(palette) {
+  const value = palette.background
+  const match = /^#([0-9a-f]{6})$/i.exec(value)
+  if (match === null) return false
+  const hex = match[1]
+  const r = parseInt(hex.slice(0, 2), 16) / 255
+  const g = parseInt(hex.slice(2, 4), 16) / 255
+  const b = parseInt(hex.slice(4, 6), 16) / 255
+  const linear = (channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+  const luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+  return luminance > 0.55
+}
+
 /**
  * Merge stored settings over the defaults and drop values of the wrong shape,
  * so a hand-edited localStorage entry cannot break the terminal.
@@ -802,6 +816,29 @@ const PANEL_CSS = `
 @keyframes ait-rgb-slide{from{background-position:0% 50%}to{background-position:200% 50%}}
 @keyframes ait-rgb-sheen{from{background-position:200% 0}to{background-position:-200% 0}}
 @keyframes ait-rgb-breathe{0%,100%{opacity:0.20}50%{opacity:0.38}}
+
+/* Light palettes keep the dark outer shell, but the terminal card's own
+   status bar and inline chrome need dark text so they stay readable. */
+.ait-terminal[data-light="true"] .ait-terminal-card{border-color:rgba(15,17,21,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.6),0 1px 2px rgba(0,0,0,0.08)}
+.ait-terminal[data-light="true"] .ait-terminal-card:focus-within{border-color:rgba(180,83,9,0.42);box-shadow:inset 0 1px 0 rgba(255,255,255,0.65),0 0 0 1px rgba(180,83,9,0.12)}
+.ait-terminal[data-light="true"] .ait-bar{background:#f7f7f5;border-bottom-color:rgba(15,17,21,0.08)}
+.ait-terminal[data-light="true"] .ait-state{color:#4b5563;border-color:rgba(15,17,21,0.08);background:rgba(15,17,21,0.035)}
+.ait-terminal[data-light="true"] .ait-state[data-state="secret"],.ait-terminal[data-light="true"] .ait-state[data-state="sealed"]{color:#7a2e2e}
+:where(.ait-terminal[data-light="true"]) .ait-state .dot{background:rgba(15,17,21,0.34)}
+.ait-terminal[data-light="true"] .ait-actions{border-color:rgba(15,17,21,0.08);background:rgba(15,17,21,0.025)}
+.ait-terminal[data-light="true"] .ait-icon{color:#5f6670}
+.ait-terminal[data-light="true"] .ait-icon:hover{background:rgba(15,17,21,0.06);color:#111827}
+.ait-terminal[data-light="true"] .ait-icon[data-on="true"]{color:#b45309;background:rgba(242,166,90,0.18)}
+.ait-terminal[data-light="true"] .ait-icon[data-on="true"]:hover{background:rgba(242,166,90,0.26)}
+.ait-terminal[data-light="true"] .ait-icon[data-flash="true"]{background:rgba(15,17,21,0.08)}
+.ait-terminal[data-light="true"] .ait-cmd{color:#6b7280}
+.ait-terminal[data-light="true"] .ait-cmd-text{color:#4b5563}
+.ait-terminal[data-light="true"] .ait-notice{border-color:rgba(15,17,21,0.08);background:#f7f7f5;color:#4b5563}
+.ait-terminal[data-light="true"] .ait-notice::before{background:rgba(15,17,21,0.34)}
+.ait-terminal[data-light="true"] .ait-secret{border-color:rgba(180,83,9,0.28);background:rgba(245,194,17,0.12);color:#3b2f0b}
+.ait-terminal[data-light="true"] .ait-secret:hover{background:rgba(245,194,17,0.18)}
+.ait-terminal[data-light="true"] .ait-connecting{color:#4b5563}
+.ait-terminal[data-light="true"] .ait-connecting::before{background:rgba(15,17,21,0.10)}
 
 @keyframes ait-idle{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @keyframes ait-sheet-in{from{opacity:0;transform:translateY(8px) scale(0.985)}to{opacity:1;transform:none}}
@@ -1534,6 +1571,7 @@ export function TerminalView(props) {
       className: 'ait-terminal',
       'data-terminal-id': terminalId,
       'data-agent-active': agentPulse ? 'true' : 'false',
+      'data-light': isLightPalette(palette) ? 'true' : 'false',
       style,
       onKeyDown: (event) => {
         if (event.key !== 'Escape' || !panelOpen) return
