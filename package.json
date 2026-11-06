@@ -1,6 +1,6 @@
 {
   "name": "agent-interactive-terminal",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Stateful PTY terminal sessions for LLM agents: screen snapshots, key input, wait conditions, and a terminal a human and an agent can share.",
   "type": "module",
   "license": "MIT",
