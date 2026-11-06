@@ -329,6 +329,61 @@ function isLightPalette(palette) {
   return luminance > 0.55
 }
 
+/** Parse a #rrggbb color into 0..255 channels. */
+function rgbOf(hex) {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex)
+  if (match === null) return { r: 255, g: 255, b: 255 }
+  return {
+    r: parseInt(match[1].slice(0, 2), 16),
+    g: parseInt(match[1].slice(2, 4), 16),
+    b: parseInt(match[1].slice(4, 6), 16),
+  }
+}
+
+/** Mix two hex colors; amount is how much of `to` to add. */
+function mixHex(from, to, amount) {
+  const a = rgbOf(from)
+  const b = rgbOf(to)
+  const channel = (x, y) => Math.round(x + (y - x) * amount).toString(16).padStart(2, '0')
+  return `#${channel(a.r, b.r)}${channel(a.g, b.g)}${channel(a.b, b.b)}`
+}
+
+/** Semi-transparent version of a hex color. */
+function alphaHex(hex, alpha) {
+  const { r, g, b } = rgbOf(hex)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/** Theme the outer shell from the selected terminal palette. */
+function shellTheme(palette) {
+  const light = isLightPalette(palette)
+  const bg = palette.background
+  const fg = palette.foreground
+  const accent = palette.blue ?? palette.cursor ?? fg
+  const bgTop = light ? mixHex(bg, '#ffffff', 0.35) : mixHex(bg, '#ffffff', 0.035)
+  const bgBottom = light ? mixHex(bg, '#000000', 0.035) : mixHex(bg, '#000000', 0.28)
+  const muted = mixHex(fg, bg, light ? 0.44 : 0.55)
+  const faint = mixHex(fg, bg, light ? 0.64 : 0.76)
+  const accentInk = isLightPalette({ background: accent }) ? '#17120c' : '#ffffff'
+  return {
+    '--ait-panel-fg': fg,
+    '--ait-panel-muted': muted,
+    '--ait-panel-faint': faint,
+    '--ait-panel-line': light ? 'rgba(15,17,21,0.10)' : 'rgba(255,255,255,0.08)',
+    '--ait-panel-line-strong': light ? 'rgba(15,17,21,0.16)' : 'rgba(255,255,255,0.14)',
+    '--ait-accent': accent,
+    '--ait-accent-soft': alphaHex(accent, light ? 0.16 : 0.14),
+    '--ait-accent-line': alphaHex(accent, light ? 0.42 : 0.34),
+    '--ait-accent-ink': accentInk,
+    '--ait-shell-bg': bgTop,
+    '--ait-shell-bg2': bgBottom,
+    '--ait-shell-highlight': light ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.045)',
+    '--ait-shell-control': light ? 'rgba(15,17,21,0.045)' : 'rgba(255,255,255,0.04)',
+    '--ait-shell-hover': light ? 'rgba(15,17,21,0.07)' : 'rgba(255,255,255,0.07)',
+    '--ait-tab-active-fg': light ? mixHex(accent, '#000000', 0.42) : mixHex(accent, '#ffffff', 0.58),
+  }
+}
+
 /**
  * Merge stored settings over the defaults and drop values of the wrong shape,
  * so a hand-edited localStorage entry cannot break the terminal.
@@ -563,9 +618,9 @@ const PANEL_CSS = `
 /* The terminal page follows the DSH settings language: inset cards, a single
    blue interaction accent, 15/13 typography, and token-only chrome colors.
    The terminal palette itself stays in --ait-bg/--ait-fg because it is content. */
-.ait-panel{--ait-panel-fg:#e8edf2;--ait-panel-muted:rgba(232,237,242,0.56);--ait-panel-faint:rgba(232,237,242,0.30);--ait-panel-line:rgba(255,255,255,0.08);--ait-panel-line-strong:rgba(255,255,255,0.14);--ait-accent:#f2a65a;--ait-accent-soft:rgba(242,166,90,0.14);--ait-accent-line:rgba(242,166,90,0.34);position:relative;display:flex;flex-direction:column;height:calc(100% - 16px);min-height:0;margin:8px;padding:0;overflow:hidden;border:1px solid var(--ait-panel-line);border-radius:14px;background:radial-gradient(120% 90% at 0% 0%,rgba(242,166,90,0.10),transparent 52%),linear-gradient(180deg,#151b23 0%,#0f141a 100%);color:var(--ait-panel-fg);box-shadow:0 18px 44px rgba(0,0,0,0.30),0 2px 8px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.05);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.ait-panel{--ait-panel-fg:#e8edf2;--ait-panel-muted:rgba(232,237,242,0.56);--ait-panel-faint:rgba(232,237,242,0.30);--ait-panel-line:rgba(255,255,255,0.08);--ait-panel-line-strong:rgba(255,255,255,0.14);--ait-accent:#f2a65a;--ait-accent-soft:rgba(242,166,90,0.14);--ait-accent-line:rgba(242,166,90,0.34);--ait-accent-ink:#1d1309;--ait-shell-bg:#151b23;--ait-shell-bg2:#0f141a;--ait-shell-highlight:rgba(255,255,255,0.045);--ait-shell-control:rgba(255,255,255,0.04);--ait-shell-hover:rgba(255,255,255,0.07);--ait-tab-active-fg:#f7e5d0;position:relative;display:flex;flex-direction:column;height:calc(100% - 16px);min-height:0;margin:8px;padding:0;overflow:hidden;border:1px solid var(--ait-panel-line);border-radius:14px;background:radial-gradient(120% 90% at 0% 0%,var(--ait-accent-soft),transparent 52%),linear-gradient(180deg,var(--ait-shell-bg) 0%,var(--ait-shell-bg2) 100%);color:var(--ait-panel-fg);box-shadow:0 18px 44px rgba(0,0,0,0.30),0 2px 8px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.05);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 .ait-panel *,.ait-panel *::before,.ait-panel *::after{box-sizing:border-box}
-.ait-panel-tabs{position:relative;display:flex;align-items:center;gap:8px;flex:none;height:48px;padding:0 8px 0 12px;border:0;border-bottom:1px solid var(--ait-panel-line);background:linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0));overflow:hidden}
+.ait-panel-tabs{position:relative;display:flex;align-items:center;gap:8px;flex:none;height:48px;padding:0 8px 0 12px;border:0;border-bottom:1px solid var(--ait-panel-line);background:linear-gradient(180deg,var(--ait-shell-highlight),transparent);overflow:hidden}
 .ait-panel-tabs>*{position:relative;z-index:1}
 .ait-panel-mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border:1px solid var(--ait-accent-line);border-radius:8px;background:var(--ait-accent-soft);color:var(--ait-accent)}
 .ait-panel-mark svg{width:15px;height:15px}
@@ -573,8 +628,8 @@ const PANEL_CSS = `
 .ait-panel-tab-scroll{display:flex;align-items:center;gap:3px;flex:1 1 auto;min-width:0;height:30px;padding:0;border:0;border-radius:0;background:transparent;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain;scroll-behavior:smooth}
 .ait-panel-tab-scroll::-webkit-scrollbar{display:none}
 .ait-panel-tab{display:flex;align-items:center;flex:0 0 auto;min-width:0;max-width:none;height:28px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--ait-panel-muted);overflow:hidden;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1),color 180ms cubic-bezier(0.2,0.8,0.2,1),box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1);animation:ait-session-tab-in 180ms cubic-bezier(0.2,0.8,0.2,1) both}
-.ait-panel-tab:hover{background:rgba(255,255,255,0.06);color:var(--ait-panel-fg)}
-.ait-panel-tab[data-on="true"]{background:var(--ait-accent-soft);border-color:var(--ait-accent-line);color:#f7e5d0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.06)}
+.ait-panel-tab:hover{background:var(--ait-shell-hover);color:var(--ait-panel-fg)}
+.ait-panel-tab[data-on="true"]{background:var(--ait-accent-soft);border-color:var(--ait-accent-line);color:var(--ait-tab-active-fg);box-shadow:inset 0 1px 0 var(--ait-shell-highlight)}
 .ait-panel-tab[data-closing="true"]{animation:ait-session-tab-out 180ms cubic-bezier(0.2,0.8,0.2,1) both;pointer-events:none}
 .ait-panel-tab-main{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;height:100%;padding:0 2px 0 8px;border:0;background:transparent;color:inherit;font:inherit;font-size:12.5px;font-weight:500;text-align:left;cursor:pointer}
 .ait-panel-tab[data-on="true"] .ait-panel-tab-main{font-weight:600}
@@ -590,9 +645,9 @@ const PANEL_CSS = `
 .ait-panel-tab-close{display:grid;place-items:center;width:18px;height:18px;margin-right:4px;flex:none;border:0;border-radius:5px;background:transparent;color:var(--ait-panel-faint);cursor:pointer;opacity:0;transition:opacity 140ms cubic-bezier(0.2,0.8,0.2,1),background-color 140ms cubic-bezier(0.2,0.8,0.2,1),color 140ms cubic-bezier(0.2,0.8,0.2,1)}
 .ait-panel-tab-close svg{width:12px;height:12px}
 .ait-panel-tab:hover .ait-panel-tab-close,.ait-panel-tab:focus-within .ait-panel-tab-close,.ait-panel-tab[data-on="true"] .ait-panel-tab-close{opacity:1}
-.ait-panel-tab-close:hover{background:rgba(255,255,255,0.10);color:#ffffff}
+.ait-panel-tab-close:hover{background:var(--ait-shell-hover);color:var(--ait-panel-fg)}
 .ait-panel-tab-main:focus-visible,.ait-panel-tab-close:focus-visible{outline:2px solid var(--ait-accent);outline-offset:-2px}
-.ait-panel-add{width:28px;height:28px;flex:none;margin-left:2px;display:grid;place-items:center;border:1px solid var(--ait-panel-line);border-radius:7px;background:rgba(255,255,255,0.04);color:var(--ait-panel-muted);cursor:pointer;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1),color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-panel-add{width:28px;height:28px;flex:none;margin-left:2px;display:grid;place-items:center;border:1px solid var(--ait-panel-line);border-radius:7px;background:var(--ait-shell-control);color:var(--ait-panel-muted);cursor:pointer;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1),color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1)}
 .ait-panel-add svg{width:15px;height:15px}
 .ait-panel-add:hover{border-color:var(--ait-accent-line);background:var(--ait-accent-soft);color:var(--ait-accent)}
 .ait-panel-add:active{transform:scale(0.94)}
@@ -600,13 +655,13 @@ const PANEL_CSS = `
 .ait-panel-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:0}
 .ait-pane{display:none;flex:1;min-height:0;flex-direction:column}
 .ait-pane[data-active="true"]{display:flex}
-.ait-panel-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;margin:10px;padding:36px 24px;text-align:center;border:1px solid var(--ait-panel-line);border-radius:12px;background:radial-gradient(120% 100% at 50% 0%,rgba(242,166,90,0.08),rgba(255,255,255,0.025) 55%,rgba(255,255,255,0.015));color:var(--ait-panel-faint)}
+.ait-panel-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;margin:10px;padding:36px 24px;text-align:center;border:1px solid var(--ait-panel-line);border-radius:12px;background:radial-gradient(120% 100% at 50% 0%,var(--ait-accent-soft),var(--ait-shell-control) 55%,transparent);color:var(--ait-panel-faint)}
 .ait-panel-empty svg{width:30px;height:30px;margin-bottom:4px;color:var(--ait-accent);opacity:0.9}
 .ait-empty-title{max-width:280px;font-size:14px;line-height:20px;font-weight:600;color:var(--ait-panel-fg)}
 .ait-empty-hint{max-width:280px;font-size:12.5px;line-height:18px;color:var(--ait-panel-muted)}
 .ait-panel-empty .ait-panel-open{margin-top:10px}
-.ait-panel-open{height:34px;padding:0 16px;border:0;border-radius:8px;background:var(--ait-accent);color:#1d1309;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(242,166,90,0.22);transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1),box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1)}
-.ait-panel-open:hover{background:#f7b46e;box-shadow:0 6px 18px rgba(242,166,90,0.28)}
+.ait-panel-open{height:34px;padding:0 16px;border:0;border-radius:8px;background:var(--ait-accent);color:var(--ait-accent-ink);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px var(--ait-accent-soft);transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1),box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-panel-open:hover{background:color-mix(in srgb,var(--ait-accent) 88%,var(--ait-panel-fg) 12%);box-shadow:0 6px 18px var(--ait-accent-line)}
 .ait-panel-open:active{transform:scale(0.97)}
 .ait-panel-open:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
 
@@ -2219,6 +2274,13 @@ export function TerminalPanel(props) {
   const [error, setError] = React.useState(null)
   const [focusEpoch, setFocusEpoch] = React.useState(0)
   const [mounted, setMounted] = React.useState(() => new Set())
+  const scheme = useDshScheme()
+  const [settings, setSettings] = React.useState(() => currentSettings())
+  React.useEffect(() => {
+    injectCss()
+    return subscribeSettings(setSettings)
+  }, [])
+  const shellStyle = shellTheme(paletteOf(resolvedThemeKey(settings, scheme)))
   const selectedRef = React.useRef(null)
   const sessionsRef = React.useRef([])
   const closingRef = React.useRef(new Set())
@@ -2505,7 +2567,7 @@ export function TerminalPanel(props) {
 
   return React.createElement(
     'section',
-    { className: 'ait-panel' },
+    { className: 'ait-panel', style: shellStyle },
     React.createElement(
       'div',
       { className: 'ait-panel-tabs' },
