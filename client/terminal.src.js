@@ -382,7 +382,10 @@ function currentSettings() {
  * @param {object} next - complete settings object.
  */
 function writeSettings(next) {
-  cachedSettings = normalizeSettings(next)
+  // A settings edit is always current-version input; without this marker
+  // normalizeSettings would treat the patch as a legacy save and reset the
+  // theme to the default, making every theme pick look inert.
+  cachedSettings = normalizeSettings({ ...next, version: 3 })
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cachedSettings, version: 3 }))
   } catch {
