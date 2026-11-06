@@ -9,12 +9,13 @@
  * @module scripts/build-client
  */
 import { build } from 'esbuild'
-import { writeFile } from 'node:fs/promises'
+import { utimes, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const entry = join(root, 'client/terminal.src.js')
+const owner = join(root, 'client/index.js')
 const output = join(root, 'client/client.terminal.js')
 
 const result = await build({
@@ -47,4 +48,8 @@ const wrapped = [
 ].join('\n')
 
 await writeFile(output, wrapped)
+// dsh-client-modules revisions the owner entry, not this chunk. Stamp the
+// owner so a chunk-only rebuild changes the revision and busts the immutable
+// chunk cache, matching the shared build preset.
+await utimes(owner, new Date(), new Date())
 console.log(`built ${output} (${wrapped.length} bytes)`)

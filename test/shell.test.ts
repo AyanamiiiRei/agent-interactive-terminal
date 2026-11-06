@@ -1,5 +1,7 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { buildShellLaunch } from '../src/session/shell.js'
 import { TerminalSession } from '../src/session/session.js'
 
 const sessions: TerminalSession[] = []
@@ -26,6 +28,23 @@ afterEach(async () => {
 })
 
 describe('shell integration', () => {
+  it('keeps zsh history suggestions enabled and installs the ready marker in PS1', () => {
+    const launch = buildShellLaunch('/bin/zsh')
+    try {
+      const dir = launch.env?.['ZDOTDIR']
+      expect(dir).toBeTypeOf('string')
+      const rc = readFileSync(join(dir as string, '.zshrc'), 'utf8')
+      expect(rc).not.toContain('_zsh_autosuggest_disable')
+      expect(rc).not.toContain('zle -N zle-line-init')
+      expect(rc).toContain('9999;B')
+      expect(rc).toContain('PS1=')
+      expect(rc).toContain('ZSH_AUTOSUGGEST_HISTORY_IGNORE')
+      expect(rc).toContain('?(#c60,)')
+    } finally {
+      launch.cleanup()
+    }
+  })
+
   it('installs prompt markers in bash without losing the user rc', async () => {
     const session = await open('/bin/bash')
     const markers = markerKinds(session)

@@ -184,6 +184,10 @@ function summaryOf(session: TerminalSession): Record<string, unknown> {
     phase: session.phase,
     cols: size.cols,
     rows: size.rows,
+    // The panel follows the session the agent just wrote to, and holds that
+    // switch while the person is holding the lease themselves.
+    agentAt: session.agentAt,
+    holder: session.lease.holder,
   }
 }
 

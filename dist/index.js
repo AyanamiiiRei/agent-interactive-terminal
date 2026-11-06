@@ -8,6 +8,6 @@ export { inspectForeground, signalGroup } from './pty/proc.js';
 export { ScreenModel } from './screen/model.js';
 export { TerminalSession } from './session/session.js';
 export { TerminalRegistry } from './session/registry.js';
-export { resolveShell } from './session/shell.js';
+export { buildShellLaunch, cmdLaunch, findExecutable, powershellLaunch, resolveShell, wslLaunch, } from './session/shell.js';
 export { createTerminalTools, toolIndex, } from './tools/index.js';
 //# sourceMappingURL=index.js.map

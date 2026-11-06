@@ -63,7 +63,9 @@ and control changes hands deliberately.
       injected only when state changes.
 - [ ] TUI fallback: cursor position and row diffs, with explicit guidance toward
       non-interactive alternatives.
-- [ ] Windows parity for keys, alternate screen, and foreground inspection.
+- [x] macOS shell launch (zsh follow / bash).
+- [x] Windows WSL zsh/bash launch and PowerShell/cmd fallback.
+- [ ] Native Windows foreground inspection and full key/alternate-screen parity.
 
 ## M4: Ship as a Harness bundle
 

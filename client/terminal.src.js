@@ -203,6 +203,32 @@ const THEMES = {
       brightWhite: '#ffffff',
     },
   },
+  adwaita: {
+    label: 'Adwaita',
+    theme: {
+      background: '#0d1117',
+      foreground: '#e6edf3',
+      cursor: '#f2a65a',
+      cursorAccent: '#0d1117',
+      selectionBackground: 'rgba(242, 166, 90, 0.30)',
+      black: '#0d1117',
+      red: '#ff7b72',
+      green: '#7ee787',
+      yellow: '#e3b341',
+      blue: '#79c0ff',
+      magenta: '#d2a8ff',
+      cyan: '#56d4dd',
+      white: '#e6edf3',
+      brightBlack: '#6e7681',
+      brightRed: '#ffa198',
+      brightGreen: '#aff5b4',
+      brightYellow: '#f2cc60',
+      brightBlue: '#a5d6ff',
+      brightMagenta: '#e2c5ff',
+      brightCyan: '#9aeaf2',
+      brightWhite: '#ffffff',
+    },
+  },
   tango: {
     label: 'Tango',
     theme: {
@@ -263,7 +289,7 @@ const FONT_STACKS = [
 const STORAGE_KEY = 'ait:terminal-settings'
 
 const DEFAULT_SETTINGS = {
-  theme: 'follow',
+  theme: 'adwaita',
   fontFamily: FONT_STACKS[0].value,
   fontSize: 13,
   lineHeight: 1.15,
@@ -284,11 +310,6 @@ const DEFAULT_SETTINGS = {
 let cachedSettings = null
 const settingsListeners = new Set()
 
-/** Whether a palette is light enough to need dark-on-light chrome. */
-function isLightTheme(key) {
-  return key === 'light' || key === 'solarizedLight'
-}
-
 /** The palette for one theme key, falling back to the default. */
 function paletteOf(key) {
   return THEMES[key] !== undefined ? THEMES[key].theme : THEMES.dark.theme
@@ -308,7 +329,16 @@ function normalizeSettings(raw) {
   // Version 2 introduced `follow`: older saves carried a fixed palette that
   // was only the previous default, so they migrate to following DSH once.
   const version = Number.isFinite(candidate.version) ? Number(candidate.version) : 0
-  if (version >= 2 && (candidate.theme === 'follow' || THEMES[candidate.theme] !== undefined)) next.theme = candidate.theme
+  if (version >= 3 && (candidate.theme === 'follow' || THEMES[candidate.theme] !== undefined)) {
+    next.theme = candidate.theme
+  } else if (version === 2 && (candidate.theme === 'follow' || candidate.theme === undefined)) {
+    // Version 3 made the dark Adwaita palette the default. A version 2 save
+    // that only inherited the old `follow` default migrates once; an explicit
+    // fixed palette is kept.
+    next.theme = 'adwaita'
+  } else if (version >= 2 && (candidate.theme === 'follow' || THEMES[candidate.theme] !== undefined)) {
+    next.theme = candidate.theme
+  }
   if (typeof candidate.fontFamily === 'string' && candidate.fontFamily.trim() !== '') next.fontFamily = candidate.fontFamily
   if (Number.isFinite(candidate.fontSize)) next.fontSize = Math.min(28, Math.max(8, Number(candidate.fontSize)))
   if (Number.isFinite(candidate.lineHeight)) next.lineHeight = Math.min(2.2, Math.max(0.9, Number(candidate.lineHeight)))
@@ -354,7 +384,7 @@ function currentSettings() {
 function writeSettings(next) {
   cachedSettings = normalizeSettings(next)
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cachedSettings, version: 2 }))
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cachedSettings, version: 3 }))
   } catch {
     // Private-mode storage can refuse writes; the value still applies in memory.
   }
@@ -392,19 +422,6 @@ function themeFor(settings, scheme) {
     theme.cursor = settings.cursorColor
   }
   return theme
-}
-
-/** Panel chrome colors that follow the terminal palette. */
-function chromeFor(settings, scheme) {
-  const key = resolvedThemeKey(settings, scheme)
-  const palette = paletteOf(key)
-  return {
-    light: isLightTheme(key),
-    accent: palette.blue,
-    text: palette.foreground,
-    muted: isLightTheme(key) ? '#6a6d73' : '#9a9da3',
-    surface: palette.background,
-  }
 }
 
 /**
@@ -525,171 +542,290 @@ function uiState(status, painted, typing, peeking) {
 }
 
 const PANEL_CSS = `
-.ait-terminal{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;font-family:"Cantarell","Inter",system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ait-text);background:var(--ait-bg)}
-.ait-terminal *, .ait-terminal *::before, .ait-terminal *::after{box-sizing:border-box}
-.ait-panel{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}
-.ait-panel-tabs{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--dsw-alias-border-l4);flex:none;overflow-x:auto;scrollbar-width:none}
-.ait-panel-tabs::-webkit-scrollbar{display:none}
-.ait-panel-tab{min-width:26px;height:24px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;font-variant-numeric:tabular-nums;cursor:pointer;transition:background-color .15s ease,color .15s ease}
-.ait-panel-tab:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
-.ait-panel-tab[data-on="true"]{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font-weight:600}
-.ait-panel-add{width:24px;height:24px;flex:none;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:15px;line-height:1;cursor:pointer}
-.ait-panel-add:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
-.ait-panel-body{flex:1;min-height:0;display:flex;flex-direction:column}
-.ait-panel-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px;font-size:12px;color:var(--dsw-alias-label-tertiary);text-align:center}
-.ait-panel-open{height:28px;padding:0 12px;border-radius:7px;border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}
-.ait-terminal[data-light="true"] .ait-state[data-state="agent"]{color:#5f6b7a;background:color-mix(in srgb,#5f6b7a 9%,transparent)}
-.ait-terminal[data-light="true"] .ait-state[data-state="typing"]{color:#8a5a00;background:color-mix(in srgb,#c18401 16%,transparent)}
-.ait-terminal[data-light="true"] .ait-state[data-state="peeking"]{color:#075985;background:color-mix(in srgb,#0ea5e9 12%,transparent)}
-.ait-terminal[data-light="true"] .ait-state[data-state="human"]{color:#166534;background:color-mix(in srgb,#22c55e 13%,transparent)}
-.ait-terminal[data-light="true"] .ait-state[data-state="observe"]{color:#8a5a00;background:color-mix(in srgb,#c18401 13%,transparent)}
-.ait-terminal[data-light="true"] .ait-state[data-state="sealed"]{color:#9b1c1c;background:color-mix(in srgb,#d93025 11%,transparent)}
-.ait-terminal[data-light="true"] .ait-state[data-state="secret"]{color:#b3261e;background:color-mix(in srgb,#d93025 13%,transparent)}
-.ait-terminal[data-light="true"] .ait-state[data-state="exited"]{color:#8c4a4a;background:color-mix(in srgb,#a05050 11%,transparent)}
-.ait-terminal[data-light="true"] .ait-notice{color:#8a5a00;background:color-mix(in srgb,#c18401 10%,transparent)}
-.ait-terminal[data-light="true"] .ait-swatch{border-color:rgba(0,0,0,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
-.ait-terminal[data-light="true"] .ait-host{box-shadow:0 1px 2px rgba(0,0,0,.08)}
-.ait-bar{display:flex;align-items:center;gap:8px;height:40px;padding:0 8px 0 11px;flex:none;background:linear-gradient(to bottom,color-mix(in srgb,var(--ait-bg) 91%,var(--ait-fg) 9%),color-mix(in srgb,var(--ait-bg) 87%,var(--ait-fg) 13%));border-bottom:1px solid color-mix(in srgb,var(--ait-fg) 13%,transparent);position:relative;z-index:2}
-.ait-glyph{display:grid;place-items:center;width:18px;height:18px;flex:none;color:var(--ait-accent);opacity:.85}
-.ait-name{font-size:11.5px;font-weight:600;letter-spacing:.01em;color:var(--ait-fg);opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:32%;flex:0 1 auto}
-.ait-name:empty{display:none}
-.ait-state{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px 0 7px;border-radius:999px;border:1px solid transparent;font-size:10.5px;font-weight:500;letter-spacing:.01em;color:var(--ait-fg);background:color-mix(in srgb,var(--ait-fg) 8%,transparent);transition:background-color .38s ease,color .38s ease,border-color .38s ease,box-shadow .38s ease;flex:0 0 auto}
-.ait-state .dot{width:5px;height:5px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 16%,transparent);transition:box-shadow .38s ease,background-color .38s ease}
-.ait-state-text{animation:ait-fade-in .18s ease}
-.ait-state[data-state="agent"]{color:var(--ait-muted);background:color-mix(in srgb,var(--ait-fg) 6%,transparent)}
-.ait-state[data-state="typing"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 14%,transparent);border-color:color-mix(in srgb,#e7c07d 22%,transparent)}
-.ait-state[data-state="typing"] .dot{animation:ait-breathe 1.6s ease-in-out infinite}
-.ait-state[data-state="peeking"]{color:#8fd7ff;background:color-mix(in srgb,#8fd7ff 13%,transparent);border-color:color-mix(in srgb,#8fd7ff 20%,transparent)}
-.ait-state[data-state="peeking"] .dot{animation:ait-pulse 2s ease-in-out infinite}
-.ait-state[data-state="human"]{color:#86efac;background:color-mix(in srgb,#86efac 13%,transparent);border-color:color-mix(in srgb,#86efac 20%,transparent)}
-.ait-state[data-state="secret"]{color:#ff9e9e;background:color-mix(in srgb,#ff7a7a 17%,transparent)}
-.ait-state[data-state="secret"] .dot{animation:ait-pulse 1.6s ease-in-out infinite}
-.ait-state[data-state="observe"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 13%,transparent);border-color:color-mix(in srgb,#e7c07d 20%,transparent)}
-.ait-state[data-state="sealed"]{color:#f0a1a1;background:color-mix(in srgb,#e05252 14%,transparent);border-color:color-mix(in srgb,#e05252 24%,transparent)}
-.ait-state[data-state="exited"]{color:#d99a9a;background:color-mix(in srgb,#d99a9a 12%,transparent)}
-.ait-state[data-state="connecting"]{color:var(--ait-muted);background:color-mix(in srgb,var(--ait-fg) 7%,transparent)}
-.ait-state[data-state="connecting"] .dot{animation:ait-pulse 1.4s ease-in-out infinite}
-.ait-actions{margin-left:auto;display:flex;align-items:center;gap:2px;flex:none}
-.ait-icon{width:28px;height:28px;display:grid;place-items:center;border:0;padding:0;border-radius:8px;background:transparent;color:var(--ait-muted);cursor:pointer;transition:background-color .15s ease,color .15s ease,transform .12s ease}
-.ait-icon:hover{background:color-mix(in srgb,var(--ait-fg) 10%,transparent);color:var(--ait-fg)}
-.ait-icon:active{transform:scale(.93)}
-.ait-icon[data-on="true"]{color:var(--ait-accent);background:color-mix(in srgb,var(--ait-accent) 16%,transparent)}
-.ait-icon[data-on="true"][data-kind="observe"]{color:#e7c07d;background:color-mix(in srgb,#e7c07d 15%,transparent)}
-.ait-icon[data-on="true"][data-kind="seal"]{color:#f0a1a1;background:color-mix(in srgb,#e05252 17%,transparent)}
-.ait-icon[data-flash="true"]{animation:ait-flash .45s ease}
+@property --ait-rgb-angle{syntax:'<angle>';inherits:false;initial-value:0deg}
+/* The terminal page follows the DSH settings language: inset cards, a single
+   blue interaction accent, 15/13 typography, and token-only chrome colors.
+   The terminal palette itself stays in --ait-bg/--ait-fg because it is content. */
+.ait-panel{--ait-panel-fg:#e8edf2;--ait-panel-muted:rgba(232,237,242,0.56);--ait-panel-faint:rgba(232,237,242,0.30);--ait-panel-line:rgba(255,255,255,0.08);--ait-panel-line-strong:rgba(255,255,255,0.14);--ait-accent:#f2a65a;--ait-accent-soft:rgba(242,166,90,0.14);--ait-accent-line:rgba(242,166,90,0.34);position:relative;display:flex;flex-direction:column;height:calc(100% - 16px);min-height:0;margin:8px;padding:0;overflow:hidden;border:1px solid var(--ait-panel-line);border-radius:14px;background:radial-gradient(120% 90% at 0% 0%,rgba(242,166,90,0.10),transparent 52%),linear-gradient(180deg,#151b23 0%,#0f141a 100%);color:var(--ait-panel-fg);box-shadow:0 18px 44px rgba(0,0,0,0.30),0 2px 8px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.05);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.ait-panel *,.ait-panel *::before,.ait-panel *::after{box-sizing:border-box}
+.ait-panel-tabs{position:relative;display:flex;align-items:center;gap:8px;flex:none;height:48px;padding:0 8px 0 12px;border:0;border-bottom:1px solid var(--ait-panel-line);background:linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0));overflow:hidden}
+.ait-panel-tabs>*{position:relative;z-index:1}
+.ait-panel-mark{display:grid;place-items:center;width:26px;height:26px;flex:none;border:1px solid var(--ait-accent-line);border-radius:8px;background:var(--ait-accent-soft);color:var(--ait-accent)}
+.ait-panel-mark svg{width:15px;height:15px}
+.ait-panel-title{flex:none;font-size:13.5px;line-height:18px;font-weight:600;letter-spacing:0.01em;color:var(--ait-panel-fg);white-space:nowrap}
+.ait-panel-tab-scroll{display:flex;align-items:center;gap:3px;flex:1 1 auto;min-width:0;height:30px;padding:0;border:0;border-radius:0;background:transparent;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-x:contain;scroll-behavior:smooth}
+.ait-panel-tab-scroll::-webkit-scrollbar{display:none}
+.ait-panel-tab{display:flex;align-items:center;flex:0 0 auto;min-width:0;max-width:none;height:28px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--ait-panel-muted);overflow:hidden;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1),color 180ms cubic-bezier(0.2,0.8,0.2,1),box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1);animation:ait-session-tab-in 180ms cubic-bezier(0.2,0.8,0.2,1) both}
+.ait-panel-tab:hover{background:rgba(255,255,255,0.06);color:var(--ait-panel-fg)}
+.ait-panel-tab[data-on="true"]{background:var(--ait-accent-soft);border-color:var(--ait-accent-line);color:#f7e5d0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.06)}
+.ait-panel-tab[data-closing="true"]{animation:ait-session-tab-out 180ms cubic-bezier(0.2,0.8,0.2,1) both;pointer-events:none}
+.ait-panel-tab-main{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;height:100%;padding:0 2px 0 8px;border:0;background:transparent;color:inherit;font:inherit;font-size:12.5px;font-weight:500;text-align:left;cursor:pointer}
+.ait-panel-tab[data-on="true"] .ait-panel-tab-main{font-weight:600}
+.ait-panel-tab[data-on="true"] .ait-panel-tab-dot{background:var(--ait-accent)}
+.ait-panel-tab[data-on="true"] .ait-panel-tab-dot[data-holder="human"]{background:#57e389}
+.ait-panel-tab-dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--ait-panel-faint);transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-panel-tab-dot[data-holder="human"]{background:#57e389}
+.ait-panel-tab-dot[data-holder="human"]+*{color:#d8f5df}
+.ait-panel-tab-dot[data-phase="running"]{background:#62a0ea}
+.ait-panel-tab-dot[data-phase="waiting_input"]{background:#f5c211}
+.ait-panel-tab-dot[data-phase="exited"]{background:rgba(232,237,242,0.24)}
+.ait-panel-tab-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-panel-tab-close{display:grid;place-items:center;width:18px;height:18px;margin-right:4px;flex:none;border:0;border-radius:5px;background:transparent;color:var(--ait-panel-faint);cursor:pointer;opacity:0;transition:opacity 140ms cubic-bezier(0.2,0.8,0.2,1),background-color 140ms cubic-bezier(0.2,0.8,0.2,1),color 140ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-panel-tab-close svg{width:12px;height:12px}
+.ait-panel-tab:hover .ait-panel-tab-close,.ait-panel-tab:focus-within .ait-panel-tab-close,.ait-panel-tab[data-on="true"] .ait-panel-tab-close{opacity:1}
+.ait-panel-tab-close:hover{background:rgba(255,255,255,0.10);color:#ffffff}
+.ait-panel-tab-main:focus-visible,.ait-panel-tab-close:focus-visible{outline:2px solid var(--ait-accent);outline-offset:-2px}
+.ait-panel-add{width:28px;height:28px;flex:none;margin-left:2px;display:grid;place-items:center;border:1px solid var(--ait-panel-line);border-radius:7px;background:rgba(255,255,255,0.04);color:var(--ait-panel-muted);cursor:pointer;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1),color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-panel-add svg{width:15px;height:15px}
+.ait-panel-add:hover{border-color:var(--ait-accent-line);background:var(--ait-accent-soft);color:var(--ait-accent)}
+.ait-panel-add:active{transform:scale(0.94)}
+.ait-panel-add:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
+.ait-panel-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;padding:0}
+.ait-panel-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;margin:10px;padding:36px 24px;text-align:center;border:1px solid var(--ait-panel-line);border-radius:12px;background:radial-gradient(120% 100% at 50% 0%,rgba(242,166,90,0.08),rgba(255,255,255,0.025) 55%,rgba(255,255,255,0.015));color:var(--ait-panel-faint)}
+.ait-panel-empty svg{width:30px;height:30px;margin-bottom:4px;color:var(--ait-accent);opacity:0.9}
+.ait-empty-title{max-width:280px;font-size:14px;line-height:20px;font-weight:600;color:var(--ait-panel-fg)}
+.ait-empty-hint{max-width:280px;font-size:12.5px;line-height:18px;color:var(--ait-panel-muted)}
+.ait-panel-empty .ait-panel-open{margin-top:10px}
+.ait-panel-open{height:34px;padding:0 16px;border:0;border-radius:8px;background:var(--ait-accent);color:#1d1309;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(242,166,90,0.22);transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1),box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-panel-open:hover{background:#f7b46e;box-shadow:0 6px 18px rgba(242,166,90,0.28)}
+.ait-panel-open:active{transform:scale(0.97)}
+.ait-panel-open:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
+
+.ait-terminal{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;gap:0;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",system-ui,sans-serif;color:var(--ait-panel-fg);background:transparent;-webkit-font-smoothing:antialiased}
+.ait-terminal *,.ait-terminal *::before,.ait-terminal *::after{box-sizing:border-box}
+.ait-terminal-card{position:relative;z-index:1;display:flex;flex-direction:column;flex:1;min-height:0;margin:0 10px 10px;overflow:hidden;border:1px solid var(--ait-panel-line);border-radius:10px;background:var(--ait-bg);box-shadow:inset 0 1px 0 rgba(255,255,255,0.03),0 1px 2px rgba(0,0,0,0.18);transition:border-color 180ms cubic-bezier(0.2,0.8,0.2,1),box-shadow 180ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-terminal-card:focus-within{border-color:var(--ait-accent-line);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04),0 0 0 1px var(--ait-accent-soft)}
+.ait-bar{position:relative;display:flex;align-items:center;gap:8px;height:38px;padding:0 8px 0 12px;flex:none;border:0;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.025);z-index:2}
+.ait-state{display:inline-flex;align-items:center;gap:6px;min-width:0;height:22px;padding:0 8px;border:1px solid rgba(255,255,255,0.07);border-radius:999px;background:rgba(255,255,255,0.03);font-size:12px;line-height:16px;font-weight:400;color:var(--ait-panel-muted);transition:color 180ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-state .dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--ait-panel-faint);transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-state[data-state="agent"] .dot,.ait-state[data-state="ready"] .dot{background:#57e389}
+.ait-state[data-state="typing"] .dot,.ait-state[data-state="peeking"] .dot{background:#62a0ea}
+.ait-state[data-state="human"] .dot{background:#57e389}
+.ait-state[data-state="observe"] .dot{background:#f5c211}
+.ait-state[data-state="secret"] .dot{background:#f5c211}
+.ait-state[data-state="sealed"] .dot{background:#ff7b72}
+.ait-state[data-state="exited"] .dot{background:rgba(232,237,242,0.30)}
+.ait-state[data-state="connecting"] .dot{background:rgba(232,237,242,0.30)}
+.ait-state[data-state="secret"],.ait-state[data-state="sealed"]{color:var(--ait-panel-fg)}
+.ait-state-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-actions{display:flex;align-items:center;gap:2px;margin-left:auto;flex:none;padding:2px;border:1px solid rgba(255,255,255,0.07);border-radius:8px;background:rgba(255,255,255,0.025)}
+.ait-icon{width:26px;height:26px;display:grid;place-items:center;border:0;padding:0;border-radius:6px;background:transparent;color:var(--ait-panel-muted);cursor:pointer;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),color 180ms cubic-bezier(0.2,0.8,0.2,1),transform 120ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-icon svg{width:15px;height:15px}
+.ait-icon:hover{background:rgba(255,255,255,0.08);color:#ffffff}
+.ait-icon:active{transform:scale(0.94)}
+.ait-icon:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
+.ait-icon[data-on="true"]{color:var(--ait-accent);background:var(--ait-accent-soft)}
+.ait-icon[data-on="true"]:hover{background:rgba(242,166,90,0.20)}
+.ait-icon[data-flash="true"]{background:rgba(255,255,255,0.12)}
 .ait-icon[data-tip]{position:relative}
-.ait-icon[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 7px);right:0;padding:4px 7px;border-radius:6px;font-size:10.5px;line-height:1.2;white-space:nowrap;color:var(--ait-fg);background:color-mix(in srgb,var(--ait-bg) 78%,var(--ait-fg) 22%);border:1px solid color-mix(in srgb,var(--ait-fg) 13%,transparent);box-shadow:0 6px 18px rgba(0,0,0,.32);opacity:0;transform:translateY(-2px);pointer-events:none;transition:opacity .12s ease,transform .12s ease;z-index:6}
+.ait-icon[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);right:0;padding:5px 8px;border-radius:6px;font-size:12px;line-height:1.35;white-space:nowrap;color:#e8edf2;background:#1f2833;border:1px solid rgba(255,255,255,0.12);box-shadow:0 4px 14px rgba(0,0,0,0.35);opacity:0;transform:translateY(-3px);pointer-events:none;transition:opacity 140ms cubic-bezier(0.2,0.8,0.2,1),transform 140ms cubic-bezier(0.2,0.8,0.2,1);z-index:6}
 .ait-icon[data-tip]:hover::after,.ait-icon[data-tip]:focus-visible::after{opacity:1;transform:none}
-.ait-idle{position:absolute;left:0;right:0;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--ait-accent),color-mix(in srgb,var(--ait-accent) 35%,transparent));transform-origin:left;animation-name:ait-idle;animation-timing-function:linear;animation-fill-mode:forwards;opacity:.9}
-.ait-notice{padding:5px 12px;font-size:11px;color:#e8c07d;background:color-mix(in srgb,#e8c07d 9%,transparent);border-bottom:1px solid color-mix(in srgb,var(--ait-fg) 8%,transparent);flex:none;animation:ait-fade-in .16s ease}
-.ait-cmd{display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:11px;line-height:1.45;color:color-mix(in srgb,var(--ait-accent) 72%,var(--ait-fg) 28%);background:color-mix(in srgb,var(--ait-accent) 7%,transparent);border-bottom:1px solid color-mix(in srgb,var(--ait-accent) 13%,transparent);flex:none;overflow:hidden}
-.ait-cmd-tag{flex:none;font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:1px 5px;border-radius:4px;background:color-mix(in srgb,var(--ait-accent) 18%,transparent);color:color-mix(in srgb,var(--ait-accent) 88%,var(--ait-fg) 12%)}
-.ait-cmd-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;opacity:.94}
-.ait-secret{display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px;border:0;border-bottom:1px solid color-mix(in srgb,#ffb86b 20%,transparent);background:color-mix(in srgb,#ffb86b 9%,transparent);color:#ffd6a3;font-size:11.5px;text-align:left;cursor:pointer;flex:none;animation:ait-fade-in .18s ease}
-.ait-secret:hover{background:color-mix(in srgb,#ffb86b 14%,transparent)}
-.ait-secret-dot{width:7px;height:7px;border-radius:50%;background:#ffb86b;box-shadow:0 0 0 0 color-mix(in srgb,#ffb86b 45%,transparent);animation:ait-pulse 1.8s ease-in-out infinite;flex:none}
-.ait-secret-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ait-sealed{display:flex;align-items:center;gap:8px;width:100%;padding:6px 12px;border:0;border-bottom:1px solid color-mix(in srgb,#e05252 26%,transparent);background:color-mix(in srgb,#e05252 11%,transparent);color:#f2b3b3;font-size:11.5px;text-align:left;cursor:pointer;flex:none;animation:ait-fade-in .18s ease}
-.ait-sealed:hover{background:color-mix(in srgb,#e05252 16%,transparent)}
-.ait-sealed-dot{width:7px;height:7px;border-radius:50%;background:#e05252;box-shadow:0 0 0 3px color-mix(in srgb,#e05252 18%,transparent);flex:none}
-.ait-sealed-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ait-terminal[data-sealed="true"] .ait-host{border-color:color-mix(in srgb,#e05252 38%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 0 0 1px color-mix(in srgb,#e05252 12%,transparent)}
-.ait-terminal[data-light="true"] .ait-sealed{color:#8f1d1d;background:color-mix(in srgb,#d93025 8%,transparent);border-bottom-color:color-mix(in srgb,#d93025 20%,transparent)}
-.ait-terminal[data-light="true"] .ait-secret{color:#8a4b00;background:color-mix(in srgb,#c18401 9%,transparent);border-bottom-color:color-mix(in srgb,#c18401 20%,transparent)}
-.ait-terminal[data-light="true"] .ait-secret:hover{background:color-mix(in srgb,#c18401 14%,transparent)}
-.ait-terminal[data-agent="true"] .ait-bar::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,transparent 18%,color-mix(in srgb,var(--ait-accent) 26%,transparent) 44%,transparent 70%);background-size:220% 100%;animation:ait-sweep 1.5s linear infinite;z-index:0}
-.ait-terminal[data-agent="true"] .ait-bar>*{position:relative;z-index:1}
-.ait-terminal[data-agent="true"] .ait-host{border-color:color-mix(in srgb,var(--ait-accent) 32%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 0 0 1px color-mix(in srgb,var(--ait-accent) 9%,transparent),0 2px 12px color-mix(in srgb,var(--ait-accent) 10%,transparent)}
-@keyframes ait-sweep{from{background-position:130% 0}to{background-position:-130% 0}}
-.ait-stage{position:relative;flex:1;min-height:0;display:flex}
-.ait-host{flex:1;min-height:0;margin:6px 8px 8px;padding:8px 10px 10px;border-radius:10px;border:1px solid color-mix(in srgb,var(--ait-fg) 9%,transparent);background:var(--ait-bg);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 1px 2px rgba(0,0,0,.16);overflow:hidden}
+.ait-cmd{display:flex;align-items:center;gap:6px;min-height:18px;padding:6px 12px 0;flex:none;overflow:hidden;font-size:12px;line-height:16px;color:var(--ait-panel-faint)}
+.ait-cmd-tag{flex:none;font-size:10.5px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--ait-accent)}
+.ait-cmd-text{min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ait-panel-muted)}
+.ait-notice{display:flex;align-items:center;gap:8px;min-height:32px;margin:8px 10px 0;padding:7px 10px;flex:none;border:1px solid var(--ait-panel-line);border-radius:8px;background:rgba(255,255,255,0.035);font-size:12px;line-height:16px;color:var(--ait-panel-muted)}
+.ait-notice::before{content:"";width:6px;height:6px;flex:none;border-radius:50%;background:var(--ait-panel-faint)}
+.ait-secret{display:flex;align-items:center;gap:8px;width:auto;min-height:36px;margin:8px 10px 0;padding:7px 10px;flex:none;border:1px solid rgba(245,194,17,0.28);border-radius:8px;background:rgba(245,194,17,0.08);color:var(--ait-panel-fg);font:inherit;font-size:12px;line-height:16px;text-align:left;cursor:pointer;transition:background-color 180ms cubic-bezier(0.2,0.8,0.2,1),border-color 180ms cubic-bezier(0.2,0.8,0.2,1)}
+.ait-secret:hover{background:rgba(245,194,17,0.13)}
+.ait-secret:focus-visible{outline:2px solid var(--ait-accent);outline-offset:2px}
+.ait-secret-dot{width:6px;height:6px;flex:none;border-radius:50%;background:#f5c211}
+.ait-secret-text{min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+.ait-stage{position:relative;flex:1;min-height:0;display:flex;background:var(--ait-bg);overflow:hidden}
+.ait-host{flex:1;min-height:0;padding:8px 11px 10px;background:var(--ait-bg);overflow:hidden}
 .ait-host .xterm{height:100%}
-.ait-host:focus-within{border-color:color-mix(in srgb,var(--ait-accent) 32%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 0 0 2px color-mix(in srgb,var(--ait-accent) 9%,transparent)}
+.ait-host:focus-within{outline:none}
 .ait-host .xterm-viewport{background:transparent!important;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ait-fg) 22%,transparent) transparent}
 .ait-host .xterm-viewport::-webkit-scrollbar{width:10px}
 .ait-host .xterm-viewport::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ait-fg) 18%,transparent);border-radius:6px;border:2px solid transparent;background-clip:content-box}
 .ait-host .xterm-viewport::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--ait-fg) 28%,transparent);background-clip:content-box}
-.ait-term-bell{animation:ait-bell .22s ease-in-out 2}
-.ait-connecting{position:absolute;inset:6px 8px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:10px;border:1px solid color-mix(in srgb,var(--ait-fg) 9%,transparent);background:var(--ait-bg);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--ait-fg) 4%,transparent),0 1px 2px rgba(0,0,0,.16);color:var(--ait-muted);font-size:11.5px;pointer-events:none;z-index:1}
-.ait-spinner{width:18px;height:18px;border-radius:50%;border:2px solid color-mix(in srgb,var(--ait-fg) 14%,transparent);border-top-color:var(--ait-accent);animation:ait-spin .7s linear infinite}
-.ait-toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;background:color-mix(in srgb,var(--ait-bg) 78%,var(--ait-fg) 22%);border:1px solid color-mix(in srgb,var(--ait-fg) 13%,transparent);box-shadow:0 8px 24px rgba(0,0,0,.35);color:var(--ait-fg);font-size:11px;z-index:3;animation:ait-toast-in .18s ease;pointer-events:none}
-.ait-toast svg{color:var(--ait-accent)}
-.ait-backdrop{position:absolute;inset:0;z-index:4;background:transparent}
-.ait-sheet{position:absolute;top:44px;right:8px;width:min(344px,calc(100% - 16px));max-height:calc(100% - 52px);z-index:5;display:flex;flex-direction:column;overflow:hidden;border-radius:14px;background:color-mix(in srgb,var(--ait-bg) 86%,var(--ait-fg) 14%);border:1px solid color-mix(in srgb,var(--ait-fg) 16%,transparent);box-shadow:0 24px 64px -16px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.2);backdrop-filter:blur(20px);animation:ait-sheet-in .19s cubic-bezier(.2,.8,.2,1)}
-.ait-bar,.ait-sheet,.ait-sheet-foot,.ait-themes,.ait-row-label,.ait-group-label{user-select:none}
-.ait-sheet-head{display:flex;align-items:center;justify-content:space-between;padding:13px 14px 11px;flex:none;background:linear-gradient(to bottom,color-mix(in srgb,var(--ait-fg) 4%,transparent),transparent)}
-.ait-sheet-head .ait-sheet-title{letter-spacing:.02em}
-.ait-sheet-tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid color-mix(in srgb,var(--ait-fg) 9%,transparent);flex:none}
-.ait-sheet-tab{flex:1;border:0;background:transparent;color:var(--ait-muted);font:inherit;font-size:11.5px;padding:7px 4px 8px;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer;transition:color .15s ease,border-color .15s ease}
-.ait-sheet-tab:hover{color:var(--ait-fg)}
-.ait-sheet-tab[data-on="true"]{color:var(--ait-fg);border-bottom-color:var(--ait-accent)}
-.ait-sheet-hint{font-size:10.5px;line-height:1.5;color:var(--ait-muted);margin:0 0 7px}
-.ait-sheet-title{font-size:12.5px;font-weight:600;letter-spacing:.01em}
-.ait-sheet-body{flex:1;min-height:0;overflow:auto;padding:2px 14px 12px;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--ait-fg) 20%,transparent) transparent}
-.ait-tab-body{animation:ait-tab-in .16s ease}
+.ait-term-bell{animation:ait-bell 320ms ease 1}
+.ait-connecting{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--ait-bg);color:var(--ait-panel-muted);font-size:12px;line-height:16px;pointer-events:none;z-index:1}
+.ait-connecting::before{content:"";width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,0.10)}
+.ait-spinner{display:none}
+.ait-connecting-text{opacity:0.7}
+.ait-toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;background:#1f2833;color:#e8edf2;border:1px solid rgba(255,255,255,0.12);box-shadow:0 8px 24px rgba(0,0,0,0.28);font-size:12px;line-height:16px;z-index:3;pointer-events:none;animation:ait-toast-in 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-toast svg{width:20px;height:20px;color:currentColor}
+.ait-backdrop{position:absolute;inset:0;z-index:4;background:var(--dsw-alias-bg-mask-1);animation:ait-fade-in 320ms cubic-bezier(0.32,0.72,0,1)}
+
+.ait-sheet{position:absolute;inset:8px;z-index:5;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);box-shadow:none;backdrop-filter:none;animation:ait-sheet-in 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-sheet,.ait-sheet-foot,.ait-themes,.ait-row-label,.ait-group-label,.ait-sheet-tabs{user-select:none}
+.ait-sheet-embedded{position:static;inset:auto;display:block;overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;animation:none}
+.ait-sheet-embedded .ait-sheet-tabs{margin:0 0 8px}
+.ait-sheet-embedded .ait-sheet-body{padding:0;overflow:visible}
+.ait-sheet-embedded .ait-sheet-foot{height:auto;min-height:56px;padding:12px 0 0;border-top:1px solid var(--dsw-alias-border-l1)}
+
+.ait-sheet-head{display:flex;align-items:center;justify-content:space-between;height:52px;padding:0 8px 0 16px;flex:none}
+.ait-sheet-title{font-size:15px;line-height:20px;font-weight:600;letter-spacing:-0.01em;color:var(--dsw-alias-label-primary)}
+.ait-sheet-head .ait-icon{width:36px;height:36px}
+.ait-sheet-head .ait-icon[data-tip]::after{display:none}
+.ait-sheet-tabs{display:flex;gap:2px;height:32px;margin:0 16px;padding:2px;flex:none;border:0;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent)}
+.ait-sheet-tab{flex:1;min-width:0;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;padding:0 8px;cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),color 320ms cubic-bezier(0.32,0.72,0,1),border-color 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-sheet-tab:hover{color:var(--dsw-alias-label-primary)}
+.ait-sheet-tab[data-on="true"]{background:var(--dsw-alias-bg-layer-1);border-color:var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-weight:600}
+.ait-sheet-tab:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:-2px}
+.ait-sheet-hint{margin:0 0 8px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ait-sheet-body{flex:1;min-height:0;overflow:auto;padding:0 16px 24px;scrollbar-width:thin;scrollbar-color:var(--dsw-alias-border-l2) transparent;overscroll-behavior:contain}
 .ait-sheet-body::-webkit-scrollbar{width:8px}
-.ait-sheet-body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--ait-fg) 16%,transparent);border-radius:4px}
-.ait-group{margin-top:10px}
-.ait-group-label{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ait-muted);margin:0 0 7px}
-.ait-card{border-radius:11px;background:color-mix(in srgb,var(--ait-fg) 5%,transparent);border:1px solid color-mix(in srgb,var(--ait-fg) 8%,transparent);overflow:hidden}
-.ait-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;padding:6px 11px}
-.ait-row + .ait-row{border-top:1px solid color-mix(in srgb,var(--ait-fg) 7%,transparent)}
-.ait-row-label{flex:1;min-width:0;font-size:12px;color:var(--ait-fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ait-row-hint{font-size:10.5px;color:var(--ait-muted);margin-top:1px}
-.ait-select,.ait-input{height:28px;min-width:0;border-radius:7px;border:1px solid color-mix(in srgb,var(--ait-fg) 16%,transparent);background:color-mix(in srgb,var(--ait-bg) 70%,var(--ait-fg) 12%);color:var(--ait-fg);padding:0 8px;font-size:11.5px;font-family:inherit;outline:none;transition:border-color .15s ease,box-shadow .15s ease}
-.ait-select:focus,.ait-input:focus{border-color:var(--ait-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--ait-accent) 22%,transparent)}
-.ait-select{max-width:172px;appearance:none;padding-right:24px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239a9da3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center;background-size:10px 6px}
-.ait-input[type="number"]{width:62px;text-align:right;font-variant-numeric:tabular-nums;appearance:textfield}
+.ait-sheet-body::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:4px}
+.ait-tab-body{animation:ait-tab-in 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-group{margin-top:24px}
+.ait-group:first-child{margin-top:8px}
+.ait-group-label{margin:0 0 8px;font-size:13px;line-height:18px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--dsw-alias-label-secondary)}
+.ait-card{border:1px solid var(--dsw-alias-settings-card-stroke);border-radius:10px;background:var(--dsw-alias-settings-card-fill);overflow:hidden}
+.ait-row{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:0 16px;font-size:15px;line-height:20px;color:var(--dsw-alias-label-primary)}
+.ait-row + .ait-row::before{content:"";position:absolute;top:0;left:16px;right:0;height:1px;background:var(--dsw-alias-border-l1)}
+.ait-row-label{flex:1;min-width:0;font-size:15px;line-height:20px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-row-label:has(.ait-row-hint){white-space:normal;overflow:visible}
+.ait-row-hint{margin-top:2px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ait-select,.ait-input{height:44px;min-width:0;border:0;border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:15px;outline:none;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),box-shadow 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-select{max-width:180px;cursor:pointer}
+.ait-select:disabled,.ait-input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
+.ait-select:focus-visible,.ait-input:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-link)}
+.ait-input[type="number"]{width:68px;text-align:right;font-variant-numeric:tabular-nums;appearance:textfield}
 .ait-input[type="number"]::-webkit-inner-spin-button,.ait-input[type="number"]::-webkit-outer-spin-button{appearance:none;margin:0}
-.ait-color{position:relative;display:inline-block;width:26px;height:26px;border-radius:7px;border:1px solid color-mix(in srgb,var(--ait-fg) 18%,transparent);overflow:hidden;cursor:pointer;padding:0}
-.ait-color span{position:absolute;inset:0;display:block;border-radius:6px}
+.ait-color-wrap{display:inline-flex;align-items:center;gap:6px}
+.ait-color{position:relative;display:inline-block;width:32px;height:32px;flex:none;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;overflow:hidden;cursor:pointer;padding:0;background:transparent}
+.ait-color span{position:absolute;inset:0;display:block;border-radius:7px}
 .ait-color input{position:absolute;inset:0;opacity:0;cursor:pointer;border:0;padding:0}
-.ait-switch{position:relative;width:32px;height:18px;flex:none;border:0;padding:0;border-radius:999px;background:color-mix(in srgb,var(--ait-fg) 20%,transparent);cursor:pointer;transition:background-color .18s ease}
-.ait-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .18s cubic-bezier(.2,.8,.2,1)}
-.ait-switch[data-on="true"]{background:var(--ait-accent)}
-.ait-switch[data-on="true"]::after{transform:translateX(14px)}
-.ait-segment{display:inline-flex;padding:2px;border-radius:8px;background:color-mix(in srgb,var(--ait-fg) 8%,transparent);gap:2px}
-.ait-segment button{border:0;background:transparent;color:var(--ait-muted);font:inherit;font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;transition:background-color .15s ease,color .15s ease}
-.ait-segment button[data-on="true"]{background:color-mix(in srgb,var(--ait-fg) 14%,transparent);color:var(--ait-fg);box-shadow:0 1px 2px rgba(0,0,0,.18)}
-.ait-stepper{display:inline-flex;align-items:center;gap:1px;height:28px;padding:2px;border-radius:8px;background:color-mix(in srgb,var(--ait-fg) 8%,transparent)}
-.ait-stepper button{width:24px;height:24px;border:0;padding:0;border-radius:6px;background:transparent;color:var(--ait-fg);font:inherit;font-size:13px;line-height:1;cursor:pointer;transition:background-color .15s ease}
-.ait-stepper button:hover{background:color-mix(in srgb,var(--ait-fg) 12%,transparent)}
-.ait-stepper-value{min-width:22px;text-align:center;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--ait-fg)}
-.ait-themes{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}
-.ait-theme{position:relative;display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--ait-fg);font:inherit;font-size:11px;text-align:left;cursor:pointer;transition:background-color .15s ease,border-color .15s ease}
-.ait-theme:hover{background:color-mix(in srgb,var(--ait-fg) 7%,transparent)}
-.ait-theme[data-on="true"]{border-color:color-mix(in srgb,var(--ait-accent) 70%,transparent);background:color-mix(in srgb,var(--ait-accent) 10%,transparent)}
-.ait-swatch{width:26px;height:26px;flex:none;border-radius:7px;display:flex;flex-direction:column;gap:3px;padding:4px 5px;border:1px solid rgba(255,255,255,.14);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.ait-color:focus-within{outline:2px solid var(--dsw-alias-link);outline-offset:2px}
+.ait-switch{position:relative;width:51px;height:31px;flex:none;border:0;padding:0;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 18%,transparent);cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:var(--dsw-alias-switch-thumb);transition:transform 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-switch[data-on="true"]{background:var(--dsw-alias-link)}
+.ait-switch[data-on="true"]::after{transform:translateX(20px)}
+.ait-switch:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:2px}
+.ait-segment{display:inline-flex;align-items:center;gap:2px;height:32px;padding:2px;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent)}
+.ait-segment button{height:28px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;padding:0 10px;cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),border-color 320ms cubic-bezier(0.32,0.72,0,1),color 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-segment button:hover{color:var(--dsw-alias-label-primary)}
+.ait-segment button[data-on="true"]{background:var(--dsw-alias-bg-layer-1);border-color:var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-weight:600}
+.ait-segment button:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:-2px}
+.ait-stepper{display:inline-flex;align-items:center;gap:1px;height:32px;padding:2px;border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent)}
+.ait-stepper button{width:28px;height:28px;border:0;padding:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:15px;line-height:1;cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),transform 160ms cubic-bezier(0.32,0.72,0,1)}
+.ait-stepper button:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.ait-stepper button:active{transform:scale(0.98)}
+.ait-stepper button:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:-2px}
+.ait-stepper-value{min-width:24px;text-align:center;font-size:13px;line-height:18px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary)}
+.ait-themes{display:flex;flex-direction:column}
+.ait-theme{position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 16px;border:0;border-radius:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:15px;line-height:20px;text-align:left;cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-theme + .ait-theme::before{content:"";position:absolute;top:0;left:16px;right:0;height:1px;background:var(--dsw-alias-border-l1)}
+.ait-theme:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.ait-theme:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:-2px}
+.ait-theme[data-on="true"] .ait-theme-name{font-weight:500}
+.ait-swatch{width:24px;height:24px;flex:none;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;display:flex;flex-direction:column;gap:2px;padding:3px 4px;overflow:hidden;box-shadow:none}
 .ait-swatch-dots{display:flex;gap:2px}
 .ait-swatch-dots i{display:block;width:3px;height:3px;border-radius:50%}
-.ait-swatch-line{display:block;height:2px;border-radius:1px;opacity:.55}
-.ait-theme-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
-.ait-theme-check{position:absolute;top:5px;right:5px;display:flex;color:var(--ait-accent)}
-.ait-key{font-family:ui-monospace,"JetBrains Mono",monospace;font-size:10.5px;font-weight:500;padding:4px 7px;border-radius:6px;border:1px solid color-mix(in srgb,var(--ait-fg) 14%,transparent);background:color-mix(in srgb,var(--ait-fg) 6%,transparent);box-shadow:0 1px 0 color-mix(in srgb,var(--ait-fg) 10%,transparent);color:var(--ait-fg);cursor:pointer;transition:border-color .15s ease,background-color .15s ease}
-.ait-key:hover{background:color-mix(in srgb,var(--ait-fg) 10%,transparent)}
-.ait-key[data-recording="true"]{border-color:var(--ait-accent);color:var(--ait-accent);animation:ait-pulse 1.2s ease-in-out infinite}
-.ait-sheet-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;flex:none;border-top:1px solid color-mix(in srgb,var(--ait-fg) 10%,transparent)}
-.ait-ghost{border:0;background:transparent;color:var(--ait-muted);font:inherit;font-size:11.5px;padding:6px 9px;border-radius:7px;cursor:pointer;transition:background-color .15s ease,color .15s ease}
-.ait-ghost:hover{background:color-mix(in srgb,var(--ait-fg) 8%,transparent);color:var(--ait-fg)}
-.ait-saved{font-size:10.5px;color:var(--ait-muted)}
+.ait-swatch-line{display:block;height:2px;width:14px;border-radius:1px;opacity:0.55}
+.ait-swatch-line-short{width:9px}
+.ait-theme-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ait-theme-check{display:flex;flex:none;width:20px;height:20px;color:var(--dsw-alias-link)}
+.ait-theme-check svg{width:20px;height:20px}
+.ait-key{min-height:32px;padding:0 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent);color:var(--dsw-alias-label-primary);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;font-weight:500;cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),border-color 320ms cubic-bezier(0.32,0.72,0,1),color 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-key:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.ait-key:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:2px}
+.ait-key[data-recording="true"]{border-color:var(--dsw-alias-link);color:var(--dsw-alias-link);box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-link) 18%,transparent)}
+.ait-sheet-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;height:56px;padding:0 16px;flex:none;border-top:1px solid var(--dsw-alias-border-l1)}
+.ait-ghost{height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-link);font:inherit;font-size:15px;font-weight:500;cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),transform 160ms cubic-bezier(0.32,0.72,0,1)}
+.ait-ghost:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.ait-ghost:active{transform:scale(0.98)}
+.ait-ghost:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:2px}
+.ait-saved{font-size:13px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
+
+/* The settings sheet lives inside the dark terminal card, so it uses the
+   same graphite surface and warm accent as the rest of the panel. The embedded
+   copy on the light plugin page is deliberately excluded. */
+.ait-panel .ait-sheet:not(.ait-sheet-embedded){border-color:rgba(255,255,255,0.10);border-radius:12px;background:linear-gradient(180deg,#161d26 0%,#10161d 100%);color:#e8edf2;box-shadow:0 24px 60px rgba(0,0,0,0.48),inset 0 1px 0 rgba(255,255,255,0.04)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-title{color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-head{border-bottom:1px solid rgba(255,255,255,0.06)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-head .ait-icon{color:rgba(232,237,242,0.56)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-head .ait-icon:hover{background:rgba(255,255,255,0.08);color:#ffffff}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tabs{background:rgba(255,255,255,0.06)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tab{color:rgba(232,237,242,0.56)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tab:hover{color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tab[data-on="true"]{background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.12);color:#ffffff}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-hint,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-group-label,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row-hint,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-saved{color:rgba(232,237,242,0.56)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-card{border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.035)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row{color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row-label{color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row + .ait-row::before,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme + .ait-theme::before{background:rgba(255,255,255,0.07)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-select,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-input{background:rgba(255,255,255,0.06);color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-select:disabled,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-input:disabled{color:rgba(232,237,242,0.30)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-select:focus-visible,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-input:focus-visible{box-shadow:0 0 0 2px #f2a65a}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper{background:rgba(255,255,255,0.06)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment button,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper button{color:rgba(232,237,242,0.56)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment button:hover,
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper button:hover{color:#e8edf2;background:rgba(255,255,255,0.08)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment button[data-on="true"]{background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.12);color:#ffffff}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper-value{color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme{color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme:hover{background:rgba(255,255,255,0.05)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme[data-on="true"]{background:rgba(242,166,90,0.10)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme-check{color:#f2a65a}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-color{border-color:rgba(255,255,255,0.14)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-key{border-color:rgba(255,255,255,0.10);background:rgba(255,255,255,0.05);color:#e8edf2}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-key:hover{background:rgba(255,255,255,0.08)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-key[data-recording="true"]{border-color:#f2a65a;color:#f2a65a;box-shadow:0 0 0 2px rgba(242,166,90,0.16)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-switch{background:rgba(255,255,255,0.16)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-switch::after{background:#fbfbfb}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-switch[data-on="true"]{background:#f2a65a}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-foot{border-top-color:rgba(255,255,255,0.07)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-ghost{color:#f2a65a}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-ghost:hover{background:rgba(242,166,90,0.10)}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-body{scrollbar-color:rgba(255,255,255,0.16) transparent}
+.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16)}
+
+/* Agent activity: a rotating RGB border and travelling light on the top bar
+   and the black tablecloth below the terminal card. */
+.ait-panel::before{content:"";position:absolute;inset:0;z-index:9;padding:1.5px;border-radius:14px;background:conic-gradient(from var(--ait-rgb-angle),#ff3d8b,#ff9d00,#f5ff3d,#3dff9a,#3de1ff,#7a5cff,#ff3d8b);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:0;pointer-events:none;transition:opacity 350ms ease;filter:drop-shadow(0 0 5px rgba(61,225,255,0.35))}
+.ait-panel-tabs::before{content:"";position:absolute;inset:0;z-index:0;background:linear-gradient(105deg,transparent 18%,rgba(255,61,139,0.16) 33%,rgba(245,255,61,0.12) 43%,rgba(61,225,255,0.18) 54%,rgba(122,92,255,0.14) 64%,transparent 79%);background-size:220% 100%;opacity:0;pointer-events:none;transition:opacity 350ms ease}
+.ait-panel-tabs::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;z-index:2;background:linear-gradient(90deg,#ff3d8b,#ff9d00,#f5ff3d,#3dff9a,#3de1ff,#7a5cff,#ff3d8b);background-size:220% 100%;opacity:0;pointer-events:none;transition:opacity 350ms ease;filter:drop-shadow(0 0 5px rgba(61,225,255,0.55))}
+.ait-panel-body::before{content:"";position:absolute;left:9%;right:9%;bottom:-8px;height:54px;z-index:0;border-radius:50%;background:linear-gradient(90deg,#ff3d8b,#3de1ff,#7a5cff);filter:blur(24px);opacity:0;pointer-events:none;transition:opacity 400ms ease}
+.ait-panel-body::after{content:"";position:absolute;left:12px;right:12px;bottom:4px;height:3px;z-index:2;border-radius:999px;background:linear-gradient(90deg,#ff3d8b,#ff9d00,#f5ff3d,#3dff9a,#3de1ff,#7a5cff,#ff3d8b);background-size:200% 100%;opacity:0;pointer-events:none;transition:opacity 350ms ease;filter:drop-shadow(0 0 7px rgba(61,225,255,0.55))}
+.ait-panel:has(.ait-terminal[data-agent-active="true"]){box-shadow:0 18px 44px rgba(0,0,0,0.30),0 2px 8px rgba(0,0,0,0.22),inset 0 1px 0 rgba(255,255,255,0.05),0 0 28px rgba(61,225,255,0.16),0 0 46px rgba(255,61,139,0.10)}
+.ait-panel:has(.ait-terminal[data-agent-active="true"])::before{opacity:1;animation:ait-rgb-spin 3s linear infinite}
+.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-tabs::before{opacity:1;animation:ait-rgb-sheen 3.2s linear infinite}
+.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-tabs::after{opacity:0.95;animation:ait-rgb-slide 2.2s linear infinite}
+.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-body::before{opacity:0.30;animation:ait-rgb-breathe 3s ease-in-out infinite}
+.ait-panel:has(.ait-terminal[data-agent-active="true"]) .ait-panel-body::after{opacity:0.95;animation:ait-rgb-slide 2.5s linear infinite reverse}
+@keyframes ait-rgb-spin{to{--ait-rgb-angle:360deg}}
+@keyframes ait-rgb-slide{from{background-position:0% 50%}to{background-position:200% 50%}}
+@keyframes ait-rgb-sheen{from{background-position:200% 0}to{background-position:-200% 0}}
+@keyframes ait-rgb-breathe{0%,100%{opacity:0.20}50%{opacity:0.38}}
+
 @keyframes ait-idle{from{transform:scaleX(1)}to{transform:scaleX(0)}}
-@keyframes ait-sheet-in{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes ait-sheet-in{from{opacity:0;transform:translateY(8px) scale(0.985)}to{opacity:1;transform:none}}
 @keyframes ait-fade-in{from{opacity:0}to{opacity:1}}
-@keyframes ait-tab-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 @keyframes ait-toast-in{from{opacity:0;transform:translate(-50%,4px)}to{opacity:1;transform:translate(-50%,0)}}
-@keyframes ait-spin{to{transform:rotate(360deg)}}
-@keyframes ait-pulse{0%,100%{opacity:1}50%{opacity:.55}}
-@keyframes ait-breathe{0%,100%{opacity:.55}50%{opacity:1}}
-@keyframes ait-flash{0%{background:color-mix(in srgb,var(--ait-accent) 35%,transparent)}100%{background:transparent}}
-@keyframes ait-bell{0%,100%{opacity:1}50%{opacity:.5}}
-@media (prefers-reduced-motion: reduce){
-  .ait-state[data-state="typing"] .dot,.ait-state[data-state="peeking"] .dot,.ait-state[data-state="secret"] .dot,.ait-state[data-state="connecting"] .dot{animation:none}
-  .ait-terminal[data-agent="true"] .ait-bar::after{animation:none;background:none}
-  .ait-secret-dot{animation:none}
-  .ait-sealed-dot{animation:none}
-  .ait-state-text,.ait-sheet,.ait-tab-body,.ait-toast,.ait-notice,.ait-icon{animation:none;transition:none}
-  .ait-idle{animation:none!important;opacity:.3}
-  .ait-spinner{animation:none;border-top-color:var(--ait-accent);opacity:.7}
+@keyframes ait-bell{0%,100%{opacity:1}50%{opacity:0.6}}
+@keyframes ait-tab-in{from{opacity:0;transform:translateY(2px) scale(0.96)}to{opacity:1;transform:none}}
+@keyframes ait-session-tab-in{from{opacity:0;max-width:0;transform:translateY(2px) scale(0.96)}to{opacity:1;max-width:180px;transform:none}}
+@keyframes ait-session-tab-out{from{opacity:1;max-width:180px;transform:none}to{opacity:0;max-width:0;transform:scale(0.96)}}
+
+.ait-tab-body>.ait-group{animation:ait-rise 320ms cubic-bezier(0.32,0.72,0,1) both}
+.ait-tab-body>.ait-group:nth-child(2){animation-delay:30ms}
+.ait-tab-body>.ait-group:nth-child(3){animation-delay:60ms}
+.ait-tab-body>.ait-group:nth-child(4){animation-delay:90ms}
+@keyframes ait-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+@media (pointer:coarse){
+  .ait-icon,.ait-sheet-head .ait-icon{width:44px;height:44px}
+  .ait-panel-add{width:44px;height:44px}
+  .ait-panel-tab-close{width:28px;height:28px;opacity:0.8}
+  .ait-select,.ait-input,.ait-theme,.ait-row{min-height:44px}
+  .ait-key{min-height:44px}
+}
+@media (prefers-reduced-motion:reduce){
+  .ait-sheet,.ait-tab-body,.ait-tab-body>.ait-group,.ait-toast,.ait-backdrop,.ait-icon,.ait-panel-tab,.ait-panel-tab-close,.ait-panel-add,.ait-panel-open,.ait-secret,.ait-switch,.ait-switch::after,.ait-sheet-tabs,.ait-sheet-tab,.ait-segment button,.ait-stepper button,.ait-theme,.ait-key,.ait-ghost,.ait-panel::before,.ait-panel-tabs::before,.ait-panel-tabs::after,.ait-panel-body::before,.ait-panel-body::after{animation:none!important;transition:none!important}
+  .ait-idle{animation:none!important;opacity:0.3}
+  .ait-tab-body>.ait-group{opacity:1;transform:none}
 }
 `
 
@@ -728,34 +864,19 @@ function beep() {
   }
 }
 
-/** A small terminal glyph that anchors the bar. */
-function TerminalGlyph() {
-  return React.createElement(
-    'svg',
-    { width: 17, height: 17, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
-    React.createElement('path', {
-      d: 'M3.4 5.1l3.3 2.9-3.3 2.9M8.9 11h3.7',
-      stroke: 'currentColor',
-      strokeWidth: 1.6,
-      strokeLinecap: 'round',
-      strokeLinejoin: 'round',
-    }),
-  )
-}
-
 /** Two sliders: quieter and more legible than a gear at this size. */
 function SettingsIcon() {
   return React.createElement(
     'svg',
-    { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
     React.createElement('path', {
       d: 'M2.6 5h3.2M9.4 5h4M2.6 11h3.6M9.8 11h3.6',
       stroke: 'currentColor',
-      strokeWidth: 1.5,
+      strokeWidth: 1.2,
       strokeLinecap: 'round',
     }),
-    React.createElement('circle', { cx: 7.4, cy: 5, r: 1.6, stroke: 'currentColor', strokeWidth: 1.5 }),
-    React.createElement('circle', { cx: 8.6, cy: 11, r: 1.6, stroke: 'currentColor', strokeWidth: 1.5 }),
+    React.createElement('circle', { cx: 7.4, cy: 5, r: 1.6, stroke: 'currentColor', strokeWidth: 1.2 }),
+    React.createElement('circle', { cx: 8.6, cy: 11, r: 1.6, stroke: 'currentColor', strokeWidth: 1.2 }),
   )
 }
 
@@ -763,11 +884,11 @@ function SettingsIcon() {
 function LockIcon(open) {
   return React.createElement(
     'svg',
-    { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
-    React.createElement('rect', { x: 3.3, y: 7, width: 9.4, height: 6.6, rx: 1.6, stroke: 'currentColor', strokeWidth: 1.5 }),
+    { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('rect', { x: 3.3, y: 7, width: 9.4, height: 6.6, rx: 1.6, stroke: 'currentColor', strokeWidth: 1.2 }),
     open
-      ? React.createElement('path', { d: 'M5.6 7V4.9a2.6 2.6 0 0 1 5 1', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' })
-      : React.createElement('path', { d: 'M5.4 7V5.1a2.6 2.6 0 0 1 5.2 0V7', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
+      ? React.createElement('path', { d: 'M5.6 7V4.9a2.6 2.6 0 0 1 5 1', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' })
+      : React.createElement('path', { d: 'M5.4 7V5.1a2.6 2.6 0 0 1 5.2 0V7', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
     React.createElement('circle', { cx: 8, cy: 10.2, r: 0.9, fill: 'currentColor' }),
   )
 }
@@ -776,11 +897,11 @@ function LockIcon(open) {
 function PlugIcon(pulled) {
   return React.createElement(
     'svg',
-    { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
     React.createElement('path', {
       d: 'M5.1 2.4v3.1M10.9 2.4v3.1',
       stroke: 'currentColor',
-      strokeWidth: 1.5,
+      strokeWidth: 1.2,
       strokeLinecap: 'round',
     }),
     React.createElement('rect', {
@@ -790,12 +911,12 @@ function PlugIcon(pulled) {
       height: 3.6,
       rx: 1.2,
       stroke: 'currentColor',
-      strokeWidth: 1.5,
+      strokeWidth: 1.2,
     }),
     React.createElement('path', {
       d: pulled ? 'M8 9.2v1.1M8 13.2l-1.3 1M8 13.2l1.3 1' : 'M8 9.2v4.4',
       stroke: 'currentColor',
-      strokeWidth: 1.5,
+      strokeWidth: 1.2,
       strokeLinecap: 'round',
     }),
   )
@@ -805,11 +926,11 @@ function PlugIcon(pulled) {
 function CheckIcon() {
   return React.createElement(
     'svg',
-    { width: 12, height: 12, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
     React.createElement('path', {
       d: 'M3.4 8.3l2.9 2.9 6.3-6.4',
       stroke: 'currentColor',
-      strokeWidth: 1.8,
+      strokeWidth: 1.2,
       strokeLinecap: 'round',
       strokeLinejoin: 'round',
     }),
@@ -820,8 +941,38 @@ function CheckIcon() {
 function CloseIcon() {
   return React.createElement(
     'svg',
-    { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
-    React.createElement('path', { d: 'M4 4l8 8M12 4l-8 8', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
+    { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('path', { d: 'M4 4l8 8M12 4l-8 8', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
+  )
+}
+
+/** A plus glyph for the new-session control. */
+function PlusIcon() {
+  return React.createElement(
+    'svg',
+    { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('path', {
+      d: 'M8 3.4v9.2M3.4 8h9.2',
+      stroke: 'currentColor',
+      strokeWidth: 1.2,
+      strokeLinecap: 'round',
+    }),
+  )
+}
+
+/** A small terminal prompt mark used by the panel header. */
+function TerminalMark() {
+  return React.createElement(
+    'svg',
+    { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+    React.createElement('rect', { x: 2, y: 3, width: 12, height: 10, rx: 2, stroke: 'currentColor', strokeWidth: 1.1 }),
+    React.createElement('path', {
+      d: 'M4.6 6.1l1.9 1.9-1.9 1.9M8 9.9h3',
+      stroke: 'currentColor',
+      strokeWidth: 1.1,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    }),
   )
 }
 
@@ -862,7 +1013,7 @@ function Segmented(props) {
  * WebSocket stream, plus the settings sheet and the idle-handback indicator.
  */
 export function TerminalView(props) {
-  const { sessionId, terminalId, labels, onNewTab, onCloseTab } = props
+  const { sessionId, terminalId, labels, onNewTab, onCloseTab, autoFocus = true } = props
   const hostRef = React.useRef(null)
   const termRef = React.useRef(null)
   const fitRef = React.useRef(null)
@@ -1203,10 +1354,21 @@ export function TerminalView(props) {
 
     connect()
 
-    // A terminal panel is for typing: when its tab becomes active, put the
-    // caret in the terminal instead of leaving focus on the tab strip.
+    // A terminal panel is for typing: when the person activates its tab, put
+    // the caret in the terminal instead of leaving focus on the tab strip. An
+    // automatic switch from agent activity must not steal focus from an input
+    // outside the panel, so in that case only move the caret when the focus is
+    // already inside the panel or nowhere in particular.
     const focusTimer = window.setTimeout(() => {
       if (disposed) return
+      if (!autoFocus) {
+        const active = document.activeElement
+        const inside =
+          active !== null &&
+          typeof active.closest === 'function' &&
+          active.closest('.ait-panel') !== null
+        if (!inside && active !== document.body) return
+      }
       term.focus()
     }, 80)
 
@@ -1349,30 +1511,26 @@ export function TerminalView(props) {
                 : state === 'peeking'
                   ? labels.peeking
                   : labels.ready
-  const chrome = chromeFor(settings, scheme)
   const palette = paletteOf(resolvedThemeKey(settings, scheme))
   const size = Math.min(28, Math.max(8, settings.fontSize + zoom))
   const countdownMs = Math.max(1, settings.idleHandback) * 1000
   const showCountdown =
     status.access === 'collaborate' && !status.suspended && status.phase !== 'exited' && status.holder === 'human'
 
+  // Only local palette variables are inline. Every piece of chrome reads a
+  // DSH alias token from PANEL_CSS, so the panel follows the app theme while
+  // the terminal body keeps the palette the person chose.
   const style = {
     '--ait-bg': palette.background,
     '--ait-fg': palette.foreground,
-    '--ait-text': chrome.text,
-    '--ait-muted': chrome.muted,
-    '--ait-accent': chrome.accent,
-    background: `color-mix(in srgb, ${palette.background} 95%, ${palette.foreground} 5%)`,
-    color: palette.foreground,
   }
 
   return React.createElement(
     'section',
     {
       className: 'ait-terminal',
-      'data-light': chrome.light ? 'true' : 'false',
-      'data-agent': agentPulse ? 'true' : 'false',
-      'data-sealed': sealed ? 'true' : 'false',
+      'data-terminal-id': terminalId,
+      'data-agent-active': agentPulse ? 'true' : 'false',
       style,
       onKeyDown: (event) => {
         if (event.key !== 'Escape' || !panelOpen) return
@@ -1382,10 +1540,11 @@ export function TerminalView(props) {
       },
     },
     React.createElement(
+      'div',
+      { className: 'ait-terminal-card' },
+    React.createElement(
       'header',
       { className: 'ait-bar' },
-      React.createElement('span', { className: 'ait-glyph' }, TerminalGlyph()),
-      React.createElement('span', { className: 'ait-name', title: status.name }, humanName(status.name) ?? ''),
       React.createElement(
         'span',
         { className: 'ait-state', 'data-state': state, 'aria-live': 'polite' },
@@ -1396,7 +1555,7 @@ export function TerminalView(props) {
         ? React.createElement('div', {
             className: 'ait-idle',
             key: inputEpoch,
-            style: { animationDuration: countdownMs + 'ms' },
+            style: { '--ait-idle-duration': countdownMs + 'ms' },
           })
         : null,
       React.createElement(
@@ -1476,6 +1635,7 @@ export function TerminalView(props) {
             React.createElement('span', { className: 'ait-connecting-text' }, labels.connectingHint),
           ),
     ),
+    ),
     copied
       ? React.createElement(
           'div',
@@ -1505,14 +1665,6 @@ export function TerminalView(props) {
   )
 }
 
-/** The session name when it is a real name, otherwise null. */
-function humanName(name) {
-  if (typeof name !== 'string' || name.trim() === '') return null
-  if (/^s-[0-9a-f]{4,}/i.test(name)) return null
-  if (/^\d+$/.test(name)) return null
-  return name
-}
-
 /**
  * The settings sheet: an overlay inside the terminal panel, never a dialog.
  * Every change is written immediately, so the terminal updates as you edit.
@@ -1535,7 +1687,7 @@ function TerminalSettings(props) {
   const stack = FONT_STACKS.find((item) => item.value === settings.fontFamily) ?? FONT_STACKS[0]
   const shortcuts = settings.shortcuts
   const palette = paletteOf(resolvedThemeKey(settings, scheme))
-  const themeCursor = palette.cursor ?? '#ffffff'
+  const themeCursor = palette.cursor ?? palette.foreground
 
   const changeShortcut = (action, combo) => {
     if (combo === null) return
@@ -1590,11 +1742,11 @@ function TerminalSettings(props) {
         ),
         React.createElement('span', {
           className: 'ait-swatch-line',
-          style: { background: swatch.foreground, width: '14px' },
+          style: { background: swatch.foreground },
         }),
         React.createElement('span', {
-          className: 'ait-swatch-line',
-          style: { background: swatch.foreground, width: '9px' },
+          className: 'ait-swatch-line ait-swatch-line-short',
+          style: { background: swatch.foreground },
         }),
       ),
       React.createElement('span', { className: 'ait-theme-name' }, label),
@@ -1739,7 +1891,7 @@ function TerminalSettings(props) {
         React.createElement('span', { className: 'ait-row-label' }, '颜色'),
         React.createElement(
           'span',
-          { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
+          { className: 'ait-color-wrap' },
           React.createElement(
             'label',
             { className: 'ait-color', title: '选择光标颜色' },
@@ -1887,23 +2039,29 @@ function TerminalSettings(props) {
 
   return React.createElement(
     'div',
-    { className: 'ait-sheet', role: 'group', 'aria-label': '终端设置' },
-    React.createElement(
-      'div',
-      { className: 'ait-sheet-head' },
-      React.createElement('span', { className: 'ait-sheet-title' }, '终端设置'),
-      React.createElement(
-        'button',
-        {
-          className: 'ait-icon',
-          type: 'button',
-          'data-tip': '关闭',
-          'aria-label': '关闭',
-          onClick: onClose,
-        },
-        CloseIcon(),
-      ),
-    ),
+    {
+      className: props.embedded ? 'ait-sheet ait-sheet-embedded' : 'ait-sheet',
+      role: 'group',
+      'aria-label': '终端设置',
+    },
+    props.embedded
+      ? null
+      : React.createElement(
+          'div',
+          { className: 'ait-sheet-head' },
+          React.createElement('span', { className: 'ait-sheet-title' }, '终端设置'),
+          React.createElement(
+            'button',
+            {
+              className: 'ait-icon',
+              type: 'button',
+              'data-tip': '关闭',
+              'aria-label': '关闭',
+              onClick: onClose,
+            },
+            CloseIcon(),
+          ),
+        ),
     React.createElement(
       'div',
       { className: 'ait-sheet-tabs', role: 'tablist', 'aria-label': '设置分类' },
@@ -1949,10 +2107,42 @@ function TerminalSettings(props) {
 }
 
 /**
+ * The same terminal preferences, but embedded in the plugin configuration page.
+ * It shares the browser-local settings with the sidebar sheet, so editing the
+ * theme, font, cursor, or shortcuts here updates a live terminal immediately.
+ */
+export function TerminalPreferences() {
+  const [settings, setSettings] = React.useState(() => currentSettings())
+  const scheme = useDshScheme()
+
+  React.useEffect(() => {
+    injectCss()
+    return subscribeSettings(() => setSettings(currentSettings()))
+  }, [])
+
+  const size = Math.min(28, Math.max(8, settings.fontSize))
+  return React.createElement(TerminalSettings, {
+    embedded: true,
+    settings,
+    scheme,
+    onChange: (patch) => writeSettings({ ...settings, ...patch }),
+    onReset: () => resetSettings(),
+    fontSize: size,
+  })
+}
+
+/**
  * The single sidebar page: one tab per live Host session, with our own tab
  * strip. The Host owns the sessions; this view only lists, selects, opens and
  * closes them, so an agent-created session appears here on the next poll and a
  * closed one disappears for both sides.
+ *
+ * Tabs size to their label, the add button follows the last tab, and a
+ * middle click on a tab closes that session. A tab entering or leaving runs a
+ * short fade/scale transition so the strip does not jump.
+ * When the agent writes to a session the panel switches to it, unless the
+ * person currently holds that session's lease; then the switch waits for the
+ * lease to return to the agent.
  */
 export function TerminalPanel(props) {
   const { sessionId, api, attachPath, labels } = props
@@ -1960,10 +2150,19 @@ export function TerminalPanel(props) {
   const [selected, setSelected] = React.useState(null)
   const [error, setError] = React.useState(null)
   const selectedRef = React.useRef(null)
+  const sessionsRef = React.useRef([])
+  const closingRef = React.useRef(new Set())
+  const closeTimers = React.useRef(new Map())
   const creating = React.useRef(false)
   const polling = React.useRef(false)
   const booted = React.useRef(false)
+  const primed = React.useRef(false)
+  const seenAgentAt = React.useRef(new Map())
+  const autoFocus = React.useRef(true)
+  const scrollRef = React.useRef(null)
+  const tabRefs = React.useRef(new Map())
   selectedRef.current = selected
+  sessionsRef.current = sessions
 
   const openNew = React.useCallback(() => {
     if (creating.current) return
@@ -1971,8 +2170,14 @@ export function TerminalPanel(props) {
     api
       .open(120, 30)
       .then((created) => {
-        const item = { id: String(created.id), name: created.name || String(created.id) }
+        const item = {
+          id: String(created.id),
+          name: created.name || String(created.id),
+          agentAt: 0,
+          holder: 'agent',
+        }
         setSessions((prev) => (prev.some((session) => session.id === item.id) ? prev : [...prev, item]))
+        autoFocus.current = true
         setSelected(item.id)
         setError(null)
       })
@@ -1984,36 +2189,147 @@ export function TerminalPanel(props) {
       })
   }, [api])
 
+  const selectSession = (id) => {
+    autoFocus.current = true
+    setSelected(id)
+  }
+
   const closeSession = React.useCallback(
     (id) => {
+      if (closingRef.current.has(id)) return
+      const list = sessionsRef.current
+      const index = list.findIndex((session) => session.id === id)
+      if (index < 0) return
+      const remaining = list.filter((session) => session.id !== id)
+      closingRef.current.add(id)
+      // Keep the tab mounted for the leave animation, but take it out of the
+      // selection immediately so the body switches without waiting.
+      setSessions((prev) => prev.map((session) => (session.id === id ? { ...session, closing: true } : session)))
+      if (selectedRef.current === id) {
+        const neighbor = remaining[index] ?? remaining[index - 1] ?? null
+        autoFocus.current = true
+        setSelected(neighbor === null ? null : neighbor.id)
+      }
       api.close(id).catch(() => {})
-      setSessions((prev) => {
-        const next = prev.filter((session) => session.id !== id)
-        if (selectedRef.current === id) setSelected(next.length > 0 ? next[next.length - 1].id : null)
-        return next
-      })
+      const timer = window.setTimeout(() => {
+        closeTimers.current.delete(id)
+        closingRef.current.delete(id)
+        setSessions((prev) => prev.filter((session) => session.id !== id))
+      }, 180)
+      closeTimers.current.set(id, timer)
     },
     [api],
   )
+
+  React.useEffect(
+    () => () => {
+      for (const timer of closeTimers.current.values()) window.clearTimeout(timer)
+      closeTimers.current.clear()
+      closingRef.current.clear()
+    },
+    [],
+  )
+
+  const moveTab = (index) => {
+    if (sessions.length === 0) return
+    const target = sessions[(index + sessions.length) % sessions.length]
+    selectSession(target.id)
+    const element = tabRefs.current.get(target.id)
+    if (element !== undefined) element.focus()
+  }
+
+  const onTabKeyDown = (event, index) => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      moveTab(index + 1)
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveTab(index - 1)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      moveTab(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      moveTab(sessions.length - 1)
+    }
+  }
+
+  const labelOf = (session, index) => {
+    const named = typeof session.name === 'string' && session.name.trim() !== '' && session.name !== String(session.id)
+    return named ? session.name : `${labels.terminal ?? 'Terminal'} ${index + 1}`
+  }
 
   React.useEffect(() => {
     let alive = true
     const tick = () => {
       if (!alive || polling.current) return
       polling.current = true
+      const now = Date.now()
       api
         .state()
         .then((payload) => {
           if (!alive) return
+          // A closing tab is still mounted for its leave animation. Leaving the
+          // list alone for one tick keeps it from being re-added by the Host
+          // snapshot, and the next tick is only 180ms away.
+          if (closingRef.current.size > 0) return
           const list = Array.isArray(payload.sessions) ? payload.sessions : []
           const items = list
             .filter((session) => session && typeof session.id === 'string')
-            .map((session) => ({ id: session.id, name: session.name || session.id }))
+            .map((session) => ({
+              id: session.id,
+              name: session.name || session.id,
+              agentAt: typeof session.agentAt === 'number' ? session.agentAt : 0,
+              holder: session.holder === 'human' ? 'human' : 'agent',
+            }))
           setSessions(items)
-          const current = selectedRef.current
-          if (current === null || !items.some((session) => session.id === current)) {
-            setSelected(items.length > 0 ? items[items.length - 1].id : null)
+          const active = items.find((session) => session.id === selectedRef.current)
+          let nextSelected = null
+          let selectionSet = false
+          const choose = (id) => {
+            nextSelected = id
+            selectionSet = true
           }
+          if (!primed.current) {
+            // The first poll is a baseline: no old activity may steal the
+            // view. If the agent is writing right now, open on that session.
+            primed.current = true
+            for (const item of items) seenAgentAt.current.set(item.id, item.agentAt)
+            if (selectedRef.current === null || active === undefined) {
+              const recent = items
+                .filter((item) => item.agentAt > 0 && now - item.agentAt < 5000)
+                .reduce((best, item) => (best === null || item.agentAt > best.agentAt ? item : best), null)
+              const next = recent !== null ? recent : items[items.length - 1]
+              if (next !== undefined) choose(next.id)
+            }
+          } else if (active === undefined || active.holder !== 'human') {
+            let pick = null
+            for (const item of items) {
+              const previous = seenAgentAt.current.get(item.id)
+              const advanced = previous === undefined ? item.agentAt > 0 : item.agentAt > previous
+              if (advanced && (pick === null || item.agentAt > pick.agentAt)) pick = item
+            }
+            for (const item of items) seenAgentAt.current.set(item.id, item.agentAt)
+            if (pick !== null && pick.id !== selectedRef.current) {
+              autoFocus.current = false
+              choose(pick.id)
+            }
+          } else {
+            // The person holds the active lease. Leave the new agentAt values
+            // unacknowledged so the next poll after handback still switches.
+          }
+          for (const id of [...seenAgentAt.current.keys()]) {
+            if (!items.some((item) => item.id === id)) seenAgentAt.current.delete(id)
+          }
+          if (
+            !selectionSet &&
+            selectedRef.current !== null &&
+            !items.some((item) => item.id === selectedRef.current)
+          ) {
+            const next = items[items.length - 1]
+            choose(next === undefined ? null : next.id)
+          }
+          if (selectionSet) setSelected(nextSelected)
           setError(null)
           if (!booted.current) {
             booted.current = true
@@ -2028,12 +2344,40 @@ export function TerminalPanel(props) {
         })
     }
     tick()
-    const timer = window.setInterval(tick, 2000)
+    const timer = window.setInterval(tick, 1000)
     return () => {
       alive = false
       window.clearInterval(timer)
     }
   }, [api, openNew])
+
+  React.useEffect(() => {
+    const wrap = scrollRef.current
+    if (wrap === null || selected === null) return
+    const tab = tabRefs.current.get(selected)
+    if (tab === undefined) return
+    const wrapRect = wrap.getBoundingClientRect()
+    const tabRect = tab.getBoundingClientRect()
+    if (tabRect.left < wrapRect.left) {
+      wrap.scrollLeft -= wrapRect.left - tabRect.left + 4
+    } else if (tabRect.right > wrapRect.right) {
+      wrap.scrollLeft += tabRect.right - wrapRect.right + 4
+    }
+  }, [selected, sessions.length])
+
+  React.useEffect(() => {
+    const wrap = scrollRef.current
+    if (wrap === null) return undefined
+    // A vertical wheel over a horizontal strip is a scroll, not a page jump.
+    const onWheel = (event) => {
+      if (wrap.scrollWidth <= wrap.clientWidth) return
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+      event.preventDefault()
+      wrap.scrollLeft += event.deltaY
+    }
+    wrap.addEventListener('wheel', onWheel, { passive: false })
+    return () => wrap.removeEventListener('wheel', onWheel)
+  }, [])
 
   const current = sessions.find((session) => session.id === selected) || null
 
@@ -2042,27 +2386,78 @@ export function TerminalPanel(props) {
     { className: 'ait-panel' },
     React.createElement(
       'div',
-      { className: 'ait-panel-tabs', role: 'tablist' },
-      sessions.map((session) =>
-        React.createElement(
-          'button',
-          {
-            key: session.id,
-            type: 'button',
-            role: 'tab',
-            title: session.name,
-            'aria-selected': session.id === selected ? 'true' : 'false',
-            className: 'ait-panel-tab',
-            'data-on': session.id === selected ? 'true' : 'false',
-            onClick: () => setSelected(session.id),
-          },
-          session.id,
-        ),
+      { className: 'ait-panel-tabs' },
+      React.createElement('span', { className: 'ait-panel-mark', 'aria-hidden': 'true' }, TerminalMark()),
+      React.createElement('span', { className: 'ait-panel-title' }, labels.terminal),
+      React.createElement(
+        'div',
+        { className: 'ait-panel-tab-scroll', role: 'tablist', 'aria-label': labels.title, ref: scrollRef },
+        sessions.map((session, index) => {
+          const label = labelOf(session, index)
+          const on = session.id === selected
+          const closeTitle = `${labels.closeTab ?? ''} ${label}`.trim()
+          return React.createElement(
+            'div',
+            {
+              key: session.id,
+              className: 'ait-panel-tab',
+              'data-on': on ? 'true' : 'false',
+              'data-closing': session.closing ? 'true' : 'false',
+              onAuxClick: (event) => {
+                if (event.button !== 1) return
+                event.preventDefault()
+                event.stopPropagation()
+                closeSession(session.id)
+              },
+              onMouseDown: (event) => {
+                // Stop the browser's middle-click autoscroll before it starts.
+                if (event.button === 1) event.preventDefault()
+              },
+              ref: (element) => {
+                if (element === null) tabRefs.current.delete(session.id)
+                else tabRefs.current.set(session.id, element)
+              },
+            },
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                role: 'tab',
+                className: 'ait-panel-tab-main',
+                title: label,
+                'aria-selected': on ? 'true' : 'false',
+                onClick: () => selectSession(session.id),
+                onKeyDown: (event) => onTabKeyDown(event, index),
+              },
+              React.createElement('span', {
+                className: 'ait-panel-tab-dot',
+                'data-holder': session.holder || 'agent',
+                'data-phase': session.phase || 'idle',
+                'aria-hidden': 'true',
+              }),
+              React.createElement('span', { className: 'ait-panel-tab-label' }, label),
+            ),
+            React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'ait-panel-tab-close',
+                title: closeTitle,
+                'aria-label': closeTitle,
+                onClick: (event) => {
+                  event.stopPropagation()
+                  closeSession(session.id)
+                },
+              },
+              CloseIcon(),
+            ),
+          )
+        }),
       ),
       React.createElement(
         'button',
         { type: 'button', className: 'ait-panel-add', title: labels.newTerminal, 'aria-label': labels.newTerminal, onClick: openNew },
-        '+',
+        PlusIcon(),
       ),
     ),
     React.createElement(
@@ -2076,13 +2471,21 @@ export function TerminalPanel(props) {
             name: current.name,
             attachPath: attachPath,
             labels: labels,
+            autoFocus: autoFocus.current,
             onNewTab: openNew,
             onCloseTab: () => closeSession(current.id),
           })
         : React.createElement(
             'div',
             { className: 'ait-panel-empty' },
-            React.createElement('span', null, error === null ? labels.newTerminal : error),
+            React.createElement(
+              'svg',
+              { width: 28, height: 28, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+              React.createElement('rect', { x: 2, y: 3.5, width: 12, height: 9, rx: 1.6, stroke: 'currentColor', strokeWidth: 1.1 }),
+              React.createElement('path', { d: 'M4.6 6.4l1.8 1.7-1.8 1.7M7.7 9.8h2.5', stroke: 'currentColor', strokeWidth: 1.1, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+            ),
+            React.createElement('span', { className: 'ait-empty-title' }, error === null ? labels.noSessions : labels.newTerminal),
+            React.createElement('span', { className: 'ait-empty-hint' }, error === null ? labels.emptyHint : error),
             React.createElement(
               'button',
               { type: 'button', className: 'ait-panel-open', onClick: openNew },

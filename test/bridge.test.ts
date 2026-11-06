@@ -120,6 +120,24 @@ describe('bridge routes', () => {
     expect(payload.sessions[0]?.name).toBe('shared')
   })
 
+  it('reports the last agent write and the lease holder', async () => {
+    const target = await serve('sess-1')
+    mounted.push(target)
+    const session = await target.registry.open({ shell: '/bin/bash' })
+    const before = (await (await fetch(`${target.base}/state?sessionId=sess-1`)).json()) as {
+      sessions: { agentAt: number; holder: string }[]
+    }
+    expect(before.sessions[0]?.agentAt).toBe(0)
+    expect(before.sessions[0]?.holder).toBe('agent')
+    // /send records a human write, so exercise the agent path directly.
+    await session.write('echo hello', { submit: false })
+    const after = (await (await fetch(`${target.base}/state?sessionId=sess-1`)).json()) as {
+      sessions: { agentAt: number; holder: string }[]
+    }
+    expect(after.sessions[0]?.agentAt).toBeGreaterThan(0)
+    expect(after.sessions[0]?.holder).toBe('agent')
+  })
+
   it('writes into the same screen the agent reads', async () => {
     const target = await serve('sess-1')
     mounted.push(target)

@@ -20,7 +20,7 @@ import type {
   WaitSpec,
   WriteOrigin,
 } from '../types.js'
-import { buildShellLaunch, resolveShell, type ShellLaunch } from './shell.js'
+import { buildShellLaunch, type ShellLaunch } from './shell.js'
 
 /** How a session starts. The id is minted by the registry. */
 export interface SessionInit extends OpenOptions {
@@ -136,10 +136,10 @@ export class TerminalSession {
     this.id = init.id
     this.name = init.name
     this.kind = init.kind ?? 'agent'
-    this.shell = resolveShell(init.shell)
-    this.shellName = this.shell.split('/').pop() ?? this.shell
+    this.launch = buildShellLaunch(init.shell)
+    this.shell = this.launch.file
+    this.shellName = this.launch.label ?? this.shell.split(/[\\/]/).pop() ?? this.shell
     this.cwdValue = init.cwd ?? process.cwd()
-    this.launch = buildShellLaunch(this.shell)
     this.extraEnv = init.env ?? {}
     this.leaseState = { holder: 'agent', since: Date.now(), reason: 'open', suspended: false }
     this.screen = new ScreenModel({
@@ -432,8 +432,20 @@ export class TerminalSession {
     this.lastAgentWriteAtValue = Date.now()
     const signal = KEY_SIGNALS[key]
     if (signal) {
-      const target = this.fg?.pgid ?? this.pty.pid
-      signalGroup(target, signal)
+      if (process.platform === 'win32') {
+        // Windows has no POSIX process groups. Sending the control character
+        // is what a person's keyboard does to a ConPTY session.
+        this.pty.write(signal === 'SIGINT' ? '\x03' : '\x1a')
+      } else {
+        const target = this.fg?.pgid ?? this.pty.pid
+        try {
+          signalGroup(target, signal)
+        } catch {
+          // macOS can lack a readable process group; killing the PTY child
+          // still interrupts the foreground shell.
+          this.pty.kill(signal)
+        }
+      }
       this.lastOutputAt = Date.now()
       return
     }

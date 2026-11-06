@@ -13,6 +13,10 @@ export class TerminalRegistry {
     constructor(options = {}) {
         this.maxSessions = options.maxSessions ?? 4;
     }
+    /** Update the concurrent-session cap for sessions opened from now on. */
+    setMaxSessions(limit) {
+        this.maxSessions = Math.max(1, Math.floor(limit));
+    }
     /** Open a session and publish it under a fresh id. */
     async open(options = {}) {
         if (this.sessions.size >= this.maxSessions) {

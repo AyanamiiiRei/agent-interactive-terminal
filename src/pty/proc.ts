@@ -30,7 +30,13 @@ const TERMINAL_READ = /n_tty_read|tty_read|wait_woken|poll_schedule_timeout|do_s
  * Returns undefined when `/proc` is unavailable or the process is gone, which
  * makes the caller fall back to prompt markers and output silence.
  */
-export function inspectForeground(shellPid: number): ForegroundInfo | undefined {
+export function inspectForeground(
+  shellPid: number,
+  platform: NodeJS.Platform = process.platform,
+): ForegroundInfo | undefined {
+  // /proc exists only on Linux. macOS and Windows fall back to prompt markers
+  // and output silence instead of process-table inspection.
+  if (platform !== 'linux') return undefined
   const shell = readStat(shellPid)
   if (!shell) return undefined
   const pgid = shell.tpgid

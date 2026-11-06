@@ -14,12 +14,17 @@ export interface RegistryOptions {
 
 export class TerminalRegistry {
   private readonly sessions = new Map<string, TerminalSession>()
-  private readonly maxSessions: number
+  private maxSessions: number
   /** Short, human-readable ordinals instead of opaque session hashes. */
   private nextOrdinal = 1
 
   constructor(options: RegistryOptions = {}) {
     this.maxSessions = options.maxSessions ?? 4
+  }
+
+  /** Update the concurrent-session cap for sessions opened from now on. */
+  setMaxSessions(limit: number): void {
+    this.maxSessions = Math.max(1, Math.floor(limit))
   }
 
   /** Open a session and publish it under a fresh id. */

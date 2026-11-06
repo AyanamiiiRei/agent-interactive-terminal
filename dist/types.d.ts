@@ -78,7 +78,7 @@ export interface OpenOptions {
     name?: string;
     /** Working directory. Defaults to the process working directory. */
     cwd?: string;
-    /** Executable to run. Defaults to the login shell, then `/bin/bash`. */
+    /** Executable or shell choice. Defaults to the login shell; macOS falls back to `/bin/zsh`, Linux to `/bin/bash`, and Windows to WSL/PowerShell. */
     shell?: string;
     /** Arguments for the shell. Defaults to an interactive invocation. */
     args?: readonly string[];

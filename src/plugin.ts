@@ -23,25 +23,42 @@ import type { BridgeDeps } from './bridge.js'
 export const name = 'agent-interactive-terminal'
 export const inject = ['tools']
 
-/** Shell, capacity and default execution surface exposed in the Plugins page. */
+/** Shell, capacity and agent tool policy exposed in the Plugins page. */
 export const Config = z.object({
-  shell: z.union([z.const('auto'), z.const('zsh'), z.const('bash')]).default('auto'),
-  maxSessions: z.number().step(1).min(1).max(16).default(4),
-  mode: z.union([z.const('auto'), z.const('terminal'), z.const('exec')]).default('auto'),
+  shell: z.union([z.const('auto'), z.const('zsh'), z.const('bash')]).default('auto').volatile(),
+  maxSessions: z.number().step(1).min(1).max(16).default(4).volatile(),
+  /**
+   * Which execution surface the agent should reach for. `exec` keeps the
+   * one-shot bash tool as the default, `terminal` prefers the shared
+   * interactive terminal and keeps bash as a fallback, and `force` hides bash
+   * from every agent so all shell work must use the terminal tools. `auto` is
+   * the legacy spelling of `exec` and is kept for existing profiles.
+   */
+  mode: z
+    .union([z.const('auto'), z.const('exec'), z.const('terminal'), z.const('force')])
+    .default('exec')
+    .volatile(),
+  /**
+   * Add guidance that sends REPL-shaped work, such as Python sessions, into a
+   * live terminal instead of one packed shell command.
+   */
+  proactive: z.boolean().default(false).volatile(),
 })
 
 /** Resolved configuration the loader passes to {@link apply}. */
 export interface TerminalPluginConfig {
-  /** `auto` follows `$SHELL`; `zsh` and `bash` search `PATH` for that shell. */
+  /** `auto` follows `$SHELL` on POSIX and prefers WSL on Windows; `zsh`/`bash` use WSL there. */
   shell: 'auto' | 'zsh' | 'bash'
   /** Concurrent sessions one agent may keep open. */
   maxSessions: number
   /**
-   * Which execution surface the agent should reach for first. `auto` leaves
-   * the choice to the model, `terminal` nudges it toward the shared
-   * interactive terminal, and `exec` nudges it back toward one-shot commands.
+   * Which execution surface the agent should reach for first. `auto` is a
+   * legacy alias for `exec`, `terminal` prefers the interactive terminal, and
+   * `force` removes the bash tool from each agent.
    */
-  mode: 'auto' | 'terminal' | 'exec'
+  mode: 'auto' | 'exec' | 'terminal' | 'force'
+  /** Whether to explicitly steer REPL work into an interactive session. */
+  proactive: boolean
 }
 
 interface TextBlock {
@@ -73,7 +90,36 @@ interface PluginContext {
    * @param services - service names to wait for.
    * @param setup - receives the context carrying those services.
    */
-  inject<Host extends object>(services: string[], setup: (scoped: Host & { effect(effect: () => (() => void) | void): void }) => void): void
+  inject<Host extends object>(
+    services: string[],
+    setup: (
+      scoped: Host & {
+        effect(effect: () => (() => void) | void): void
+        fiber: object
+        settings: { configure(presentation: { auto?: boolean }, owner?: object): () => void }
+      },
+    ) => void,
+  ): void
+  /** Listen to the agent lifecycle, used to scope the force-interactive policy. */
+  on(
+    event: 'agent/created' | 'agent/disposed',
+    listener: (payload: { agent: AgentScope }) => void,
+  ): () => void
+  logger?: { warn(message: string): void }
+}
+
+/** One live agent's scoped context, only the parts the tool policy needs. */
+interface AgentScope {
+  ctx: {
+    tools?: {
+      restrict(filter: { deny?: readonly string[] }): () => void
+    }
+  }
+}
+
+/** The services the force-interactive policy uses. */
+interface AgentHost {
+  agents: { list(): AgentScope[] }
 }
 
 /** The services the loopback bridge uses. */
@@ -107,6 +153,7 @@ interface PromptHost {
  * @returns the absolute path, or undefined when no entry is executable.
  */
 function findOnPath(file: string): string | undefined {
+  if (typeof file !== 'string' || file.length === 0) return undefined
   const path = process.env['PATH'] ?? ''
   for (const directory of path.split(':')) {
     if (directory.length === 0) continue
@@ -122,6 +169,24 @@ function findOnPath(file: string): string | undefined {
 }
 
 /**
+ * Read a live configuration value. Fields marked `.volatile()` in the Config
+ * schema arrive wrapped in a getter object so the Host can change them without
+ * remounting the plugin; plain values are also accepted for test fixtures.
+ *
+ * @param value - wrapped or plain configured value.
+ * @param fallback - value to use when the field is absent.
+ * @returns the current primitive.
+ */
+function liveValue<T>(value: T | { get(): T } | undefined, fallback: T): T {
+  if (value === undefined) return fallback
+  if (typeof value === 'object' && value !== null && typeof (value as { get?: unknown }).get === 'function') {
+    const next = (value as { get(): T }).get()
+    return next === undefined ? fallback : next
+  }
+  return value as T
+}
+
+/**
  * Resolve the configured shell choice to a spawnable path.
  *
  * @param choice - configured shell selection.
@@ -129,7 +194,11 @@ function findOnPath(file: string): string | undefined {
  * @throws when a requested shell is not installed.
  */
 function shellPath(choice: TerminalPluginConfig['shell']): string | undefined {
-  if (choice === 'auto') return undefined
+  if (choice === 'auto' || typeof choice !== 'string') return undefined
+  // On Windows the choice names a shell inside WSL; the session builder
+  // resolves wsl.exe and reports a clear error when WSL is absent. Looking for
+  // a native zsh/bash here would incorrectly reject a valid WSL setup.
+  if (process.platform === 'win32') return choice
   const found = findOnPath(choice)
   if (found === undefined) {
     throw new Error(`the configured shell "${choice}" is not on PATH`)
@@ -144,7 +213,12 @@ function shellPath(choice: TerminalPluginConfig['shell']): string | undefined {
  * @param config - validated row configuration.
  */
 export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
-  const options: RegistryOptions = { maxSessions: config.maxSessions }
+  const shellChoice = (): TerminalPluginConfig['shell'] => liveValue(config.shell, 'auto')
+  const maxSessions = (): number => liveValue(config.maxSessions, 4)
+  const options: RegistryOptions = { maxSessions: maxSessions() }
+  const rawMode = liveValue(config.mode, 'exec')
+  const mode = rawMode === 'auto' ? 'exec' : rawMode
+  const proactive = liveValue(config.proactive, false) === true
   const registries: TerminalRegistry[] = []
   const perAgent = new WeakMap<object, ToolInstance>()
   let shared: ToolInstance | undefined
@@ -171,6 +245,22 @@ export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
     return shared
   }
 
+  // A plugin row mounted by a bundle is not automatically described by the
+  // browser settings mirror when the browser connected first. Registering a
+  // presentation for this instance makes the Host re-describe the settings
+  // document and push the row's namespace to every open client.
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.effect(() => {
+      try {
+        return settingsCtx.settings.configure({ auto: false }, settingsCtx.fiber)
+      } catch {
+        // Another instance already owns the presentation; the row form still
+        // works, so this optional registration must not break the plugin.
+        return () => {}
+      }
+    })
+  })
+
   const templates = createTerminalTools(new TerminalRegistry(options))
   for (const template of templates) {
     ctx.effect(() =>
@@ -187,8 +277,11 @@ export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
           const tool = toolkit.tools.get(template.name)
           if (tool === undefined) throw new Error(`unknown tool ${template.name}`)
           const input = { ...(args as Record<string, unknown>) }
+          if (template.name === 'terminal_open') {
+            toolkit.registry.setMaxSessions(maxSessions())
+          }
           if (template.name === 'terminal_open' && input['shell'] === undefined) {
-            const configured = shellPath(config.shell)
+            const configured = shellPath(shellChoice())
             if (configured !== undefined) input['shell'] = configured
           }
           const result = await tool.execute(input)
@@ -198,11 +291,56 @@ export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
     )
   }
 
+  if (mode === 'force') {
+    // A global tool cannot be shadowed by another global registration. Hide
+    // bash inside each agent's own scope instead, and lift the restriction when
+    // the agent is disposed or this plugin unloads.
+    ctx.inject<AgentHost>(['agents'], (host) => {
+      const restrictions = new Map<AgentScope, () => void>()
+      const restrict = (agent: AgentScope) => {
+        if (restrictions.has(agent)) return
+        const tools = agent.ctx.tools
+        if (tools === undefined) return
+        try {
+          restrictions.set(agent, tools.restrict({ deny: ['bash'] }))
+        } catch (error) {
+          ctx.logger?.warn(
+            `agent-interactive-terminal: could not hide bash for an agent: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
+      for (const agent of host.agents.list()) restrict(agent)
+      host.effect(() => {
+        if (typeof ctx.on !== 'function') {
+          return () => {
+            for (const dispose of restrictions.values()) dispose()
+            restrictions.clear()
+          }
+        }
+        const stopCreated = ctx.on('agent/created', ({ agent }) => restrict(agent))
+        const stopDisposed = ctx.on('agent/disposed', ({ agent }) => {
+          const dispose = restrictions.get(agent)
+          if (dispose !== undefined) {
+            dispose()
+            restrictions.delete(agent)
+          }
+        })
+        return () => {
+          stopCreated()
+          stopDisposed()
+          for (const dispose of restrictions.values()) dispose()
+          restrictions.clear()
+        }
+      })
+    })
+  }
+
   const openFromBridge = async (
     toolkit: ToolInstance,
     options: { cols?: number; rows?: number; kind?: 'agent' | 'user' },
   ) => {
-    const configured = shellPath(config.shell)
+    const configured = shellPath(shellChoice())
+    toolkit.registry.setMaxSessions(maxSessions())
     return toolkit.registry.open({
       ...(options.cols === undefined ? {} : { cols: options.cols }),
       ...(options.rows === undefined ? {} : { rows: options.rows }),
@@ -242,11 +380,15 @@ export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
   })
 
   const modeGuidance =
-    config.mode === 'terminal'
-      ? 'Prefer terminal_open and the other terminal_* tools when work is interactive, long-running, or benefits from shared state: REPLs, package managers, database clients, TUI programs, or anything that may prompt for input. Keep bash for short one-shot commands whose output you only need once.'
-      : config.mode === 'exec'
-        ? 'Prefer bash for shell work. Use terminal_open and the other terminal_* tools only when a program needs a persistent interactive session, prompts for input, or should be shared with the user in the right sidebar.'
-        : 'Use the interactive terminal when a program needs a persistent session, prompts for input, or the user should watch it; use bash for short one-shot commands whose output you only need once.'
+    mode === 'force'
+      ? 'The bash tool is disabled by configuration for this deployment. Every shell command, including a single one-shot command, must go through terminal_open and the other terminal_* tools. Do not try to call bash; it is not available.'
+      : mode === 'terminal'
+        ? 'Prefer terminal_open and the other terminal_* tools when work is interactive, long-running, or benefits from shared state: REPLs, package managers, database clients, TUI programs, or anything that may prompt for input. Use bash only for a short one-shot command whose output you need once; the terminal is the default surface.'
+        : 'Prefer bash for short one-shot commands whose output you only need once. Use terminal_open and the other terminal_* tools when a program is interactive, long-running, stateful, or should be visible to the user in the right sidebar.'
+  const proactiveGuidance =
+    proactive
+      ? 'When a task fits a REPL or needs several dependent steps, open an interactive terminal and start the program there, for example run python and then type the code into the live session. Do not pack the whole program into one bash command or heredoc; the live session keeps the work visible and lets the user correct it.'
+      : ''
 
   ctx.inject<PromptHost>(['systemPrompt'], (host) => {
     host.effect(() =>
@@ -255,6 +397,7 @@ export function apply(ctx: PluginContext, config: TerminalPluginConfig): void {
         order: host.systemPrompt.getSectionOrder('TOOL_PTY'),
         text: [
           modeGuidance,
+          ...(proactiveGuidance === '' ? [] : [proactiveGuidance]),
           'Terminal rules:',
           '- The user can watch and type into every session in the right sidebar, so treat it as a shared workspace and close sessions you no longer need.',
           '- Before each terminal_send or terminal_key that submits something, write one short sentence in the conversation saying what you are about to run; when a command asks Y or N, say which answer you are giving. Do not narrate every line of output.',

@@ -1,11 +1,14 @@
 # agent-interactive-terminal bundle patch.
 #
 # Inserts one loader row. The row's module is this same package, which exports
-# apply(ctx, config) and registers the eight terminal tools. `shell` and
-# `maxSessions` are the row's Config fields, editable from Plugins in the Web UI.
+# apply(ctx, config) and registers the eight terminal tools. `shell`,
+# `maxSessions`, `mode`, and `proactive` are the row's Config fields, editable
+# from the plugin page and the row page in the Web UI.
 - insert:
     - id: ait-terminal
       name: agent-interactive-terminal
       config:
         shell: auto
         maxSessions: 4
+        mode: exec
+        proactive: false

@@ -15,7 +15,8 @@ interface Harness {
 interface MountOptions {
   shell: 'auto' | 'zsh' | 'bash'
   maxSessions: number
-  mode?: 'auto' | 'terminal' | 'exec'
+  mode?: 'auto' | 'exec' | 'terminal' | 'force'
+  proactive?: boolean
 }
 
 /**
@@ -46,7 +47,7 @@ function mount(config: MountOptions): Harness {
       // The optional Host seats need services this fake context does not mount.
     },
   }
-  apply(ctx as never, { ...config, mode: config.mode ?? 'auto' })
+  apply(ctx as never, { ...config, mode: config.mode ?? 'exec', proactive: config.proactive ?? false })
   const agent = { id: 'plugin-test-agent' }
   return {
     names() {
@@ -126,6 +127,59 @@ describe('plugin entry', () => {
     }
   })
 
+  it('hides bash from current and future agents in force mode', () => {
+    const restrictions: { agent: { ctx: { tools?: { restrict(filter: unknown): () => void } } }; filter: unknown }[] = []
+    const disposers: (() => void)[] = []
+    let current!: { ctx: { tools: { restrict(filter: unknown): () => void } } }
+    let created: ((payload: { agent: typeof current }) => void) | undefined
+    let disposed: ((payload: { agent: typeof current }) => void) | undefined
+    const makeAgent = () => {
+      const agent = {
+        ctx: {
+          tools: {
+            restrict(filter: unknown): () => void {
+              restrictions.push({ agent, filter })
+              return () => restrictions.splice(restrictions.findIndex((entry) => entry.agent === agent), 1)
+            },
+          },
+        },
+      }
+      return agent
+    }
+    current = makeAgent()
+    const future = makeAgent()
+    const ctx = {
+      tools: { register: () => () => {} },
+      effect(effect: () => (() => void) | void): void {
+        const disposer = effect()
+        if (disposer !== undefined) disposers.push(disposer)
+      },
+      inject(services: string[], setup: (scoped: unknown) => void): void {
+        if (services.length !== 1 || services[0] !== 'agents') return
+        setup({
+          agents: { list: () => [current] },
+          effect(effect: () => (() => void) | void): void {
+            const disposer = effect()
+            if (disposer !== undefined) disposers.push(disposer)
+          },
+        })
+      },
+      on(event: 'agent/created' | 'agent/disposed', listener: (payload: { agent: typeof current }) => void): () => void {
+        if (event === 'agent/created') created = listener
+        if (event === 'agent/disposed') disposed = listener
+        return () => {}
+      },
+    }
+    apply(ctx as never, { shell: 'auto', maxSessions: 1, mode: 'force', proactive: false })
+    expect(restrictions).toHaveLength(1)
+    expect(restrictions[0]?.filter).toEqual({ deny: ['bash'] })
+    created?.({ agent: future })
+    expect(restrictions).toHaveLength(2)
+    disposed?.({ agent: future })
+    expect(restrictions).toHaveLength(1)
+    for (const dispose of disposers.reverse()) dispose()
+  })
+
   it('always adds the terminal rules and the mode-specific guidance', () => {
     const sections: { name: string; order: number; text: string }[] = []
     const ctx = {
@@ -158,5 +212,10 @@ describe('plugin entry', () => {
     expect(sections).toHaveLength(1)
     expect(sections[0]?.text).toContain('Terminal rules')
     expect(sections[0]?.text).toContain('never pkexec')
+
+    sections.length = 0
+    apply(ctx as never, { shell: 'auto', maxSessions: 1, mode: 'terminal', proactive: true })
+    expect(sections[0]?.text).toContain('python')
+    expect(sections[0]?.text).toContain('heredoc')
   })
 })

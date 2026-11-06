@@ -6,10 +6,12 @@ export interface RegistryOptions {
 }
 export declare class TerminalRegistry {
     private readonly sessions;
-    private readonly maxSessions;
+    private maxSessions;
     /** Short, human-readable ordinals instead of opaque session hashes. */
     private nextOrdinal;
     constructor(options?: RegistryOptions);
+    /** Update the concurrent-session cap for sessions opened from now on. */
+    setMaxSessions(limit: number): void;
     /** Open a session and publish it under a fresh id. */
     open(options?: OpenOptions): Promise<TerminalSession>;
     get(id: string): TerminalSession | undefined;

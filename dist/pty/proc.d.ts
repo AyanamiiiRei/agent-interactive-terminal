@@ -12,7 +12,7 @@ export interface ForegroundInfo {
  * Returns undefined when `/proc` is unavailable or the process is gone, which
  * makes the caller fall back to prompt markers and output silence.
  */
-export declare function inspectForeground(shellPid: number): ForegroundInfo | undefined;
+export declare function inspectForeground(shellPid: number, platform?: NodeJS.Platform): ForegroundInfo | undefined;
 /** Deliver a signal to a process group, which is how a terminal job is stopped. */
 export declare function signalGroup(pgid: number, signal: NodeJS.Signals): void;
 //# sourceMappingURL=proc.d.ts.map

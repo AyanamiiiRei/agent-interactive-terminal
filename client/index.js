@@ -1,9 +1,10 @@
 // agent-interactive-terminal browser half.
 //
-// Two surfaces share one Host registry:
-//   1. the Plugins page card for this bundle's `ait-terminal` row, which edits
-//      the shell, session cap and default execution surface;
-//   2. a right-Sidebar terminal tab. Each tab is one live session, rendered by
+// Three surfaces share one Host registry:
+//   1. the bundle page in Plugins, which holds the full runtime policy and the
+//      embedded browser preferences;
+//   2. the same settings on the `ait-terminal` row page;
+//   3. a right-Sidebar terminal tab. Each tab is one live session, rendered by
 //      xterm.js over a WebSocket attach stream. Typing goes straight into the
 //      PTY the agent drives; there is no command input and no key row.
 //
@@ -26,21 +27,34 @@ window.__ModuleLoader__.load({
     var ATTACH = BRIDGE + '/attach'
 
     var en = {
+      'host.title': 'Runtime policy',
+      'host.description': 'These values are written to the plugin configuration and decide how the agent chooses its shell surface.',
       title: 'Default shell',
-      description: 'Choose which shell new terminal sessions start. Auto follows your login shell.',
+      description: 'Choose which shell new terminal sessions start. Auto follows your login shell; on Windows it prefers WSL, then PowerShell. On Windows, zsh and bash run inside WSL.',
       auto: 'Auto (follow $SHELL)',
       zsh: 'zsh',
       bash: 'bash',
-      saved: 'Saved. New sessions use this shell.',
+      savedSettings: 'Saved. The new policy applies to later agent work.',
       failed: 'The deployment did not accept that value.',
       readOnly: 'Configuration is read-only in this deployment.',
       unavailable: 'This plugin is not loaded, so it cannot be configured right now.',
-      'mode.title': 'Default execution surface',
-      'mode.description': 'Tells the agent whether to reach for the interactive terminal or one-shot commands first. Auto leaves the choice to the model.',
-      'mode.auto': 'Auto (model decides)',
-      'mode.terminal': 'Interactive terminal first',
-      'mode.exec': 'One-shot commands first',
+      'policy.title': 'Tool policy',
+      'policy.description': 'Choose which execution surface the agent reaches for first.',
+      'mode.exec': 'One-shot first',
+      'mode.terminal': 'Interactive first',
+      'mode.force': 'Terminal only',
+      'mode.execHint': 'The agent uses bash for shell commands by default and reaches for the interactive terminal only when a program needs it.',
+      'mode.terminalHint': 'The agent uses the interactive terminal by default and keeps bash for a short fallback command.',
+      'mode.forceHint': 'The bash tool is hidden from every agent. All shell work must go through the interactive terminal.',
+      'max.title': 'Concurrent sessions',
+      'max.description': 'How many terminal sessions one agent may keep open at the same time.',
+      'proactive.title': 'Use the terminal proactively',
+      'proactive.description': 'When work fits a REPL, the agent enters an interactive environment such as Python and types the code there instead of packing everything into one command.',
+      'appearance.title': 'Appearance and controls',
+      'appearance.description': 'These preferences live in this browser and apply to the sidebar terminal immediately.',
+      'appearance.loading': 'Loading terminal preferences…',
       'tab.title': 'Interactive Terminal',
+      'tab.terminal': 'Terminal',
       'tab.guide.title': 'New terminal',
       'tab.guide.description': 'Open a shell in the right sidebar, shared with the agent.',
       open: 'Open interactive terminal',
@@ -60,6 +74,8 @@ window.__ModuleLoader__.load({
       'action.seal': 'Disconnect the agent',
       'action.unseal': 'Reconnect the agent',
       'action.newTerminal': 'New terminal',
+      'empty.title': 'No open terminals',
+      'empty.description': 'Open a shell shared with the agent.',
       'action.settings': 'Terminal settings',
       'hint.reconnecting': 'Connection lost, reconnecting…',
       'hint.disconnected': 'Connection lost. Close the tab and open the terminal again.',
@@ -72,21 +88,34 @@ window.__ModuleLoader__.load({
       'closeTab': 'Close terminal',
     }
     var zh = {
+      'host.title': '运行策略',
+      'host.description': '这些设置会写入插件配置，并决定 agent 优先使用哪种执行方式。',
       title: '默认 shell',
-      description: '选择新终端会话用哪个 shell 启动。自动表示跟随登录 shell。',
+      description: '选择新终端会话用哪个 shell 启动。自动表示跟随登录 shell；Windows 上优先 WSL，其次 PowerShell。Windows 上选择 zsh 或 bash 会在 WSL 里运行。',
       auto: '自动（跟随 $SHELL）',
       zsh: 'zsh',
       bash: 'bash',
-      saved: '已保存，新会话会使用这个 shell。',
+      savedSettings: '已保存，新策略会应用到之后的 agent 操作。',
       failed: '本部署没有接受这个值。',
       readOnly: '本部署的配置是只读的。',
       unavailable: '该插件当前未加载，暂时无法配置。',
-      'mode.title': '默认执行方式',
-      'mode.description': '告诉 agent 优先使用交互式终端还是一次性命令。自动表示由模型自己选择。',
-      'mode.auto': '自动（由模型决定）',
-      'mode.terminal': '优先交互式终端',
-      'mode.exec': '优先一次性命令',
+      'policy.title': '工具使用策略',
+      'policy.description': '选择 agent 默认优先使用哪种执行方式。',
+      'mode.exec': '一次性命令',
+      'mode.terminal': '交互式优先',
+      'mode.force': '强制交互式',
+      'mode.execHint': 'agent 默认用 bash 执行命令，交互式终端只在程序需要时使用。',
+      'mode.terminalHint': 'agent 默认使用交互式终端，bash 仅作为简短的补充命令。',
+      'mode.forceHint': 'bash 工具会对所有 agent 隐藏，所有 shell 操作都必须走交互式终端。',
+      'max.title': '并发会话上限',
+      'max.description': '一个 agent 同时保留的终端会话数量。',
+      'proactive.title': '主动使用交互式终端',
+      'proactive.description': '适合 REPL 的任务会先进入交互环境（例如 python），再把代码输入进去，而不是把全部逻辑塞进一条命令。',
+      'appearance.title': '外观与操作',
+      'appearance.description': '这些偏好只保存在当前浏览器，修改后会立即应用到右侧终端。',
+      'appearance.loading': '正在加载终端设置…',
       'tab.title': '交互式终端',
+      'tab.terminal': '终端',
       'tab.guide.title': '新建终端',
       'tab.guide.description': '在右侧边栏打开一个与 agent 共享的 shell。',
       open: '打开交互式终端',
@@ -106,6 +135,8 @@ window.__ModuleLoader__.load({
       'action.seal': '断开 agent',
       'action.unseal': '恢复 agent 连接',
       'action.newTerminal': '新建终端',
+      'empty.title': '没有打开的终端',
+      'empty.description': '打开一个与 agent 共享的 shell。',
       'action.settings': '终端设置',
       'hint.reconnecting': '连接中断，正在重连…',
       'hint.disconnected': '连接已断开，请关掉标签页重新打开终端。',
@@ -118,15 +149,56 @@ window.__ModuleLoader__.load({
       'closeTab': '关闭终端',
     }
 
-    var selectStyle = {
-      maxWidth: '320px',
-      height: '32px',
-      borderRadius: '8px',
-      border: '0.5px solid var(--dsw-alias-border-l4)',
-      background: 'var(--dsw-alias-bg-layer-3)',
-      color: 'var(--dsw-alias-label-primary)',
-      padding: '0 10px',
-      fontSize: '13px',
+    var CONFIG_CSS = `
+.ait-config{display:flex;flex-direction:column;gap:8px;max-width:560px;padding:8px 0 20px;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",system-ui,sans-serif;color:var(--dsw-alias-label-primary);-webkit-font-smoothing:antialiased}
+.ait-config *,.ait-config *::before,.ait-config *::after{box-sizing:border-box}
+.ait-config-card{border:1px solid var(--dsw-alias-settings-card-stroke);border-radius:10px;background:var(--dsw-alias-settings-card-fill);overflow:hidden}
+.ait-config-row{position:relative;display:flex;flex-direction:column;gap:8px;padding:12px 16px}
+.ait-config-row + .ait-config-row::before{content:"";position:absolute;top:0;left:16px;right:0;height:1px;background:var(--dsw-alias-border-l1)}
+.ait-config-label{font-size:15px;line-height:20px;font-weight:500;color:var(--dsw-alias-label-primary)}
+.ait-config-hint{font-size:13px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ait-config-inline{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.ait-config-copy{flex:1;min-width:0}
+.ait-config-select{width:100%;max-width:320px;height:44px;border:0;border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:15px;outline:none;cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),box-shadow 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-config-select:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
+.ait-config-select:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-link)}
+.ait-config-input{width:120px;height:40px;border:0;border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent);color:var(--dsw-alias-label-primary);padding:0 10px;font:inherit;font-size:15px;outline:none;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),box-shadow 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-config-input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
+.ait-config-input:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-link)}
+.ait-config-section{display:flex;flex-direction:column;gap:8px;margin-top:24px}
+.ait-config-section:first-child{margin-top:0}
+.ait-config-heading{font-size:15px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.ait-config-section-hint{margin:0;font-size:13px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ait-config-segment{display:flex;gap:2px;width:100%;max-width:360px;padding:2px;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 7%,transparent)}
+.ait-config-segment button{flex:1;min-width:0;height:32px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;padding:0 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1),color 320ms cubic-bezier(0.32,0.72,0,1),border-color 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-config-segment button:hover{color:var(--dsw-alias-label-primary)}
+.ait-config-segment button[data-on="true"]{background:var(--dsw-alias-bg-layer-1);border-color:var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-weight:600}
+.ait-config-segment button:disabled{opacity:0.4;cursor:default}
+.ait-config-segment button:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:-2px}
+.ait-config-switch{position:relative;width:51px;height:31px;flex:none;border:0;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-label-primary) 18%,transparent);cursor:pointer;transition:background-color 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-config-switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:var(--dsw-alias-bg-base);transition:transform 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-config-switch[data-on="true"]{background:var(--dsw-alias-link)}
+.ait-config-switch[data-on="true"]::after{transform:translateX(20px)}
+.ait-config-switch:disabled{opacity:0.4;cursor:default}
+.ait-config-switch:focus-visible{outline:2px solid var(--dsw-alias-link);outline-offset:2px}
+.ait-config-message{display:flex;align-items:center;gap:8px;min-height:20px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ait-config-message .dot{width:6px;height:6px;flex:none;border-radius:50%;background:var(--dsw-alias-label-tertiary)}
+.ait-config-message[data-kind="saved"] .dot{background:var(--dsw-alias-state-success-primary)}
+.ait-config-message[data-kind="failed"] .dot{background:var(--dsw-alias-state-error-primary)}
+.ait-config-unavailable{margin:0;padding:8px 0 20px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
+.ait-config-loading{padding:16px;font-size:13px;line-height:18px;color:var(--dsw-alias-label-tertiary)}
+.ait-config-appearance{margin-top:2px}
+.ait-title{display:inline-flex;align-items:center;gap:6px;min-width:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",system-ui,sans-serif}
+.ait-title svg{width:20px;height:20px;flex:none;color:var(--dsw-alias-label-secondary)}
+`
+    var configCssInjected = false
+
+    function injectConfigCss() {
+      if (configCssInjected || typeof document === 'undefined') return
+      configCssInjected = true
+      var style = document.createElement('style')
+      style.textContent = CONFIG_CSS
+      document.head.appendChild(style)
     }
 
     var LazyTerminal = React.lazy(function () {
@@ -134,42 +206,101 @@ window.__ModuleLoader__.load({
         return { default: loaded.TerminalPanel }
       })
     })
+    var LazyPreferences = React.lazy(function () {
+      return require.async('./client.terminal.js').then(function (loaded) {
+        return { default: loaded.TerminalPreferences }
+      })
+    })
 
-    function Card(props) {
-      var form = props.form
-      var state = form && form.state
-      var ready = state && state.value && state.writable !== false
+    /**
+     * Keep a component in sync with the shared Host config form. The row page
+     * normally passes a one-shot form snapshot, but the bundle page has no row
+     * form, so both pages read the same `configForms` controller here.
+     */
+    function useConfigSnapshot(form) {
+      var initial = React.useState(function () { return form ? form.getSnapshot() : null })
+      var snapshot = initial[0]
+      var setSnapshot = initial[1]
+      React.useEffect(function () {
+        if (!form) {
+          setSnapshot(null)
+          return undefined
+        }
+        setSnapshot(form.getSnapshot())
+        return form.subscribe(function () { setSnapshot(form.getSnapshot()) })
+      }, [form])
+      return snapshot
+    }
+
+    function SettingsPage(props) {
       var t = props.t || function (key) { return (en[key] || key) }
-      var fallback = state && state.value && state.value.shell ? state.value.shell : 'auto'
-      var modeFallback = state && state.value && state.value.mode ? state.value.mode : 'auto'
-      var current = React.useState(fallback)
-      var value = current[0]
-      var setValue = current[1]
+      var form = props.configForm || null
+      var snapshot = useConfigSnapshot(form)
+      var fallback = props.form && props.form.state ? props.form.state : null
+      var state = snapshot || fallback
+      var values = state && state.value ? state.value : {}
+      var ready = Boolean(
+        state &&
+        state.value &&
+        state.writable !== false &&
+        state.status !== 'loading' &&
+        state.status !== 'unavailable',
+      )
+      var saveFn = form
+        ? function (ops, revision) { return form.mutate(ops, revision) }
+        : props.form && typeof props.form.mutate === 'function'
+          ? props.form.mutate
+          : null
+      var modes = ['exec', 'terminal', 'force']
+      var rawMode = values.mode
+      var shellFallback = values.shell || 'auto'
+      var modeFallback = modes.indexOf(rawMode) >= 0 ? rawMode : 'exec'
+      var maxFallback = typeof values.maxSessions === 'number' ? values.maxSessions : 4
+      var proactiveFallback = values.proactive === true
+      var shellState = React.useState(shellFallback)
+      var shell = shellState[0]
+      var setShell = shellState[1]
       var modeState = React.useState(modeFallback)
       var mode = modeState[0]
       var setMode = modeState[1]
+      var maxState = React.useState(maxFallback)
+      var maxSessions = maxState[0]
+      var setMaxSessions = maxState[1]
+      var proactiveState = React.useState(proactiveFallback)
+      var proactive = proactiveState[0]
+      var setProactive = proactiveState[1]
       var notice = React.useState(null)
       var message = notice[0]
       var setMessage = notice[1]
 
       React.useEffect(function () {
-        setValue(fallback)
-      }, [fallback])
+        setShell(shellFallback)
+      }, [shellFallback])
       React.useEffect(function () {
         setMode(modeFallback)
       }, [modeFallback])
+      React.useEffect(function () {
+        setMaxSessions(maxFallback)
+      }, [maxFallback])
+      React.useEffect(function () {
+        setProactive(proactiveFallback)
+      }, [proactiveFallback])
 
       if (props.view === 'summary') {
-        return React.createElement('span', null, t('description'))
+        return React.createElement('span', null, t('host.description'))
       }
 
-      if (!form) {
-        return React.createElement('p', { style: { color: 'var(--dsw-alias-label-tertiary)', fontSize: 13 } }, t('unavailable'))
+      if (!form && !props.form) {
+        return React.createElement('p', { className: 'ait-config-unavailable' }, t('unavailable'))
       }
 
       function save(ops) {
+        if (!saveFn) {
+          setMessage('failed')
+          return
+        }
         setMessage(null)
-        form.mutate(ops, state && state.revision).then(function (accepted) {
+        Promise.resolve(saveFn(ops, state && state.revision)).then(function (accepted) {
           setMessage(accepted ? 'saved' : 'failed')
         }).catch(function () {
           setMessage('failed')
@@ -177,7 +308,7 @@ window.__ModuleLoader__.load({
       }
 
       function saveShell(next) {
-        setValue(next)
+        setShell(next)
         save([{ op: 'set', path: ['shell'], value: next }])
       }
 
@@ -186,51 +317,168 @@ window.__ModuleLoader__.load({
         save([{ op: 'set', path: ['mode'], value: next }])
       }
 
-      var options = ['auto', 'zsh', 'bash'].map(function (id) {
+      function saveProactive(next) {
+        setProactive(next)
+        save([{ op: 'set', path: ['proactive'], value: next }])
+      }
+
+      function commitMaxSessions() {
+        var parsed = Number(maxSessions)
+        var next = Number.isFinite(parsed) ? Math.round(parsed) : 4
+        next = Math.max(1, Math.min(16, next))
+        setMaxSessions(next)
+        if (next !== maxFallback) {
+          save([{ op: 'set', path: ['maxSessions'], value: next }])
+        }
+      }
+
+      var shellOptions = ['auto', 'zsh', 'bash'].map(function (id) {
         return React.createElement('option', { key: id, value: id }, t(id))
       })
-      var modeOptions = ['auto', 'terminal', 'exec'].map(function (id) {
-        return React.createElement('option', { key: id, value: id }, t('mode.' + id))
-      })
+      var modeHint = t('mode.' + mode + 'Hint')
+      var blockedText = !state
+        ? 'unavailable'
+        : state.status === 'unavailable'
+          ? 'unavailable'
+          : state.status === 'loading'
+            ? null
+            : state.writable === false
+              ? 'readOnly'
+              : null
 
       return React.createElement(
         'div',
-        { style: { display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px 0' } },
+        { className: 'ait-config' },
         React.createElement(
           'div',
-          { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-          React.createElement('div', { style: { fontSize: 14, fontWeight: 500, color: 'var(--dsw-alias-label-primary)' } }, t('title')),
-          React.createElement('div', { style: { fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)' } }, t('description')),
+          { className: 'ait-config-section' },
+          React.createElement('div', { className: 'ait-config-heading' }, t('host.title')),
+          React.createElement('div', { className: 'ait-config-section-hint' }, t('host.description')),
           React.createElement(
-            'select',
-            {
-              value: value,
-              disabled: !ready,
-              onChange: function (event) { saveShell(event.target.value) },
-              style: selectStyle,
-            },
-            options,
+            'div',
+            { className: 'ait-config-card' },
+            React.createElement(
+              'div',
+              { className: 'ait-config-row' },
+              React.createElement('div', { className: 'ait-config-label' }, t('title')),
+              React.createElement('div', { className: 'ait-config-hint' }, t('description')),
+              React.createElement(
+                'select',
+                {
+                  className: 'ait-config-select',
+                  value: shell,
+                  disabled: !ready,
+                  onChange: function (event) { saveShell(event.target.value) },
+                },
+                shellOptions,
+              ),
+            ),
+            React.createElement(
+              'div',
+              { className: 'ait-config-row' },
+              React.createElement('div', { className: 'ait-config-label' }, t('max.title')),
+              React.createElement('div', { className: 'ait-config-hint' }, t('max.description')),
+              React.createElement(
+                'input',
+                {
+                  className: 'ait-config-input',
+                  type: 'number',
+                  min: 1,
+                  max: 16,
+                  step: 1,
+                  value: maxSessions,
+                  disabled: !ready,
+                  onChange: function (event) {
+                    var next = Number(event.target.value)
+                    setMaxSessions(Number.isFinite(next) ? next : 4)
+                  },
+                  onBlur: commitMaxSessions,
+                },
+              ),
+            ),
+            React.createElement(
+              'div',
+              { className: 'ait-config-row' },
+              React.createElement('div', { className: 'ait-config-label' }, t('policy.title')),
+              React.createElement('div', { className: 'ait-config-hint' }, t('policy.description')),
+              React.createElement(
+                'div',
+                { className: 'ait-config-segment', role: 'group', 'aria-label': t('policy.title') },
+                modes.map(function (id) {
+                  return React.createElement(
+                    'button',
+                    {
+                      key: id,
+                      type: 'button',
+                      'data-on': mode === id ? 'true' : 'false',
+                      'aria-pressed': mode === id ? 'true' : 'false',
+                      title: t('mode.' + id + 'Hint'),
+                      disabled: !ready,
+                      onClick: function () { saveMode(id) },
+                    },
+                    t('mode.' + id),
+                  )
+                }),
+              ),
+              React.createElement('div', { className: 'ait-config-hint' }, modeHint),
+            ),
+            React.createElement(
+              'div',
+              { className: 'ait-config-row' },
+              React.createElement(
+                'div',
+                { className: 'ait-config-inline' },
+                React.createElement(
+                  'div',
+                  { className: 'ait-config-copy' },
+                  React.createElement('div', { className: 'ait-config-label' }, t('proactive.title')),
+                  React.createElement('div', { className: 'ait-config-hint' }, t('proactive.description')),
+                ),
+                React.createElement('button', {
+                  className: 'ait-config-switch',
+                  type: 'button',
+                  role: 'switch',
+                  'aria-checked': proactive ? 'true' : 'false',
+                  'aria-label': t('proactive.title'),
+                  'data-on': proactive ? 'true' : 'false',
+                  disabled: !ready,
+                  onClick: function () { saveProactive(!proactive) },
+                }),
+              ),
+            ),
           ),
+          message === null
+            ? null
+            : React.createElement(
+                'div',
+                { className: 'ait-config-message', 'data-kind': message },
+                React.createElement('span', { className: 'dot' }),
+                React.createElement('span', null, t(message === 'saved' ? 'savedSettings' : 'failed')),
+              ),
+          blockedText === null
+            ? null
+            : React.createElement(
+                'div',
+                { className: 'ait-config-message' },
+                React.createElement('span', { className: 'dot' }),
+                React.createElement('span', null, t(blockedText)),
+              ),
         ),
         React.createElement(
           'div',
-          { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-          React.createElement('div', { style: { fontSize: 14, fontWeight: 500, color: 'var(--dsw-alias-label-primary)' } }, t('mode.title')),
-          React.createElement('div', { style: { fontSize: 12, lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)' } }, t('mode.description')),
+          { className: 'ait-config-section' },
+          React.createElement('div', { className: 'ait-config-heading' }, t('appearance.title')),
+          React.createElement('div', { className: 'ait-config-section-hint' }, t('appearance.description')),
           React.createElement(
-            'select',
-            {
-              value: mode,
-              disabled: !ready,
-              onChange: function (event) { saveMode(event.target.value) },
-              style: selectStyle,
-            },
-            modeOptions,
+            'div',
+            { className: 'ait-config-appearance' },
+            React.createElement(
+              React.Suspense,
+              { fallback: React.createElement('div', { className: 'ait-config-loading' }, t('appearance.loading')) },
+              React.createElement(LazyPreferences),
+            ),
           ),
         ),
-        message === 'saved' ? React.createElement('div', { style: { fontSize: 12, color: 'var(--dsw-alias-state-success-primary)' } }, t('saved')) : null,
-        message === 'failed' ? React.createElement('div', { style: { fontSize: 12, color: 'var(--dsw-alias-state-error-primary)' } }, t('failed')) : null,
-        ready ? null : React.createElement('div', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } }, t('readOnly')),
       )
     }
 
@@ -283,7 +531,12 @@ window.__ModuleLoader__.load({
         exited: t('state.exited'),
         observe: t('state.observe'),
         sealed: t('state.sealed'),
+        title: t('tab.title'),
+        terminal: t('tab.terminal'),
+        closeTab: t('closeTab'),
         newTerminal: t('action.newTerminal'),
+        noSessions: t('empty.title'),
+        emptyHint: t('empty.description'),
         settings: t('action.settings'),
         lock: t('action.lock'),
         unlock: t('action.unlock'),
@@ -305,7 +558,7 @@ window.__ModuleLoader__.load({
       var api = React.useMemo(function () { return apiFor(sessionId) }, [sessionId])
       return React.createElement(
         React.Suspense,
-        { fallback: React.createElement('section', { style: { padding: 16, fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } }, t('starting')) },
+        { fallback: React.createElement('section', { className: 'ait-config-loading' }, t('starting')) },
         React.createElement(LazyTerminal, {
           sessionId: sessionId,
           api: api,
@@ -320,7 +573,7 @@ window.__ModuleLoader__.load({
       var t = props.t || function (key) { return (en[key] || key) }
       return React.createElement(
         'span',
-        { style: { display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 } },
+        { className: 'ait-title' },
         React.createElement(TerminalGlyph, {}),
         React.createElement('span', null, t('tab.title')),
       )
@@ -329,19 +582,30 @@ window.__ModuleLoader__.load({
     function TerminalGlyph() {
       return React.createElement(
         'svg',
-        { width: 14, height: 14, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
-        React.createElement('path', { d: 'M3 4L7 8L3 12', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }),
-        React.createElement('path', { d: 'M9 12H13', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
+        { width: 20, height: 20, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': 'true' },
+        React.createElement('path', { d: 'M3 4L7 8L3 12', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+        React.createElement('path', { d: 'M9 12H13', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
       )
     }
 
-    var inject = ['slots', 'locale', 'sidebarRight', 'sidebarRightTabs']
+    var inject = ['slots', 'locale', 'sidebarRight', 'sidebarRightTabs', 'configForms']
 
     function apply(ctx) {
+      injectConfigCss()
       ctx.effect(function () {
         return ctx.locale.register(NS, { en: en, zh: zh })
       })
       var t = ctx.locale.bind(NS)
+      var configForm = null
+      try {
+        if (ctx.configForms && typeof ctx.configForms.get === 'function') {
+          configForm = ctx.configForms.get('ait-terminal')
+        }
+      } catch {
+        // The page still renders a read-only explanation if the Host config
+        // namespace cannot be resolved in this deployment.
+      }
+      var configInject = function () { return { t: t, configForm: configForm } }
 
       ctx.slots.inject('plugins.row.config', function () {
         return ctx.slots.register(
@@ -350,9 +614,25 @@ window.__ModuleLoader__.load({
             key: ROW_KEY,
             id: 'agent-interactive-terminal',
             locale: NS,
-            inject: function () { return { t: t } },
+            inject: configInject,
           },
-          Card,
+          SettingsPage,
+        )
+      })
+
+      // The bundle page is where the full terminal configuration lives. It has
+      // no row `form` prop, so the component reads the shared Host entry's config
+      // controller injected above.
+      ctx.slots.inject('plugins.bundle.config', function () {
+        return ctx.slots.register(
+          {
+            name: 'plugins.bundle.config',
+            key: 'agent-interactive-terminal',
+            id: 'agent-interactive-terminal-bundle',
+            locale: NS,
+            inject: configInject,
+          },
+          SettingsPage,
         )
       })
 

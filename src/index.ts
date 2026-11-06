@@ -8,7 +8,16 @@ export { inspectForeground, signalGroup, type ForegroundInfo } from './pty/proc.
 export { ScreenModel, type CursorState, type ScreenOptions } from './screen/model.js'
 export { TerminalSession, type LeaseState, type SessionInit, type SnapshotResult } from './session/session.js'
 export { TerminalRegistry, type RegistryOptions } from './session/registry.js'
-export { resolveShell } from './session/shell.js'
+export {
+  buildShellLaunch,
+  cmdLaunch,
+  findExecutable,
+  powershellLaunch,
+  resolveShell,
+  wslLaunch,
+  type LaunchOptions,
+  type ShellLaunch,
+} from './session/shell.js'
 export {
   createTerminalTools,
   toolIndex,

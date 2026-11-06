@@ -158,7 +158,7 @@ function loadClient(): Harness {
 describe('browser half', () => {
   it('declares the services the seats need', () => {
     const client = loadClient()
-    expect(client.inject).toEqual(['slots', 'locale', 'sidebarRight', 'sidebarRightTabs'])
+    expect(client.inject).toEqual(['slots', 'locale', 'sidebarRight', 'sidebarRightTabs', 'configForms'])
   })
 
   it('registers one terminal page, its body and title, and the header button', () => {
@@ -166,12 +166,16 @@ describe('browser half', () => {
     client.apply()
     expect(client.slots.map((slot) => slot.name).sort()).toEqual([
       'conversation.session.header.utilities',
+      'plugins.bundle.config',
       'plugins.row.config',
       'sidebar.right.pane.tab',
       'sidebar.right.pane.tab.title',
     ])
     expect(client.slots.find((slot) => slot.name === 'plugins.row.config')?.key).toBe(
       'agent-interactive-terminal#ait-terminal',
+    )
+    expect(client.slots.find((slot) => slot.name === 'plugins.bundle.config')?.key).toBe(
+      'agent-interactive-terminal',
     )
     expect(client.tabs).toHaveLength(1)
     expect(client.tabs[0]?.['kind']).toBe('agent-terminal')
@@ -180,9 +184,18 @@ describe('browser half', () => {
     expect(client.closeHandlers).toHaveLength(0)
   })
 
+  it('numbers terminal tabs by position and starts in the Adwaita palette', () => {
+    const source = readFileSync(resolve(process.cwd(), 'client/terminal.src.js'), 'utf8')
+    expect(source).toContain('labelOf(session, index)')
+    expect(source).toContain('${labels.terminal ?? \'Terminal\'} ${index + 1}')
+    expect(source).toContain("label: 'Adwaita'")
+    expect(source).toContain("theme: 'adwaita'")
+  })
+
   it('builds the chunk with the panel export the loader expects', () => {
     const chunk = readFileSync(resolve(process.cwd(), 'client/client.terminal.js'), 'utf8')
     expect(chunk).toContain('TerminalPanel:()=>')
+    expect(chunk).toContain('TerminalPreferences:()=>')
   })
 
   it('opens the single terminal page from the header button without a terminal id', async () => {
@@ -213,6 +226,9 @@ describe('browser half', () => {
     expect(labels['observe']).toBe('state.observe')
     expect(labels['sealed']).toBe('state.sealed')
     expect(labels['newTerminal']).toBe('action.newTerminal')
+    expect(labels['title']).toBe('tab.title')
+    expect(labels['terminal']).toBe('tab.terminal')
+    expect(labels['closeTab']).toBe('closeTab')
   })
 
   it('titles the page without a session number', () => {
