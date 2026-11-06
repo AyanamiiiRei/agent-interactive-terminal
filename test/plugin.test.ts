@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { apply } from '../src/plugin.js'
 
@@ -65,6 +67,13 @@ function mount(config: MountOptions): Harness {
 }
 
 describe('plugin entry', () => {
+  it('defaults new installations to interactive-first terminal use', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/plugin.ts'), 'utf8')
+    const patch = readFileSync(resolve(process.cwd(), 'cordis.patch.yml'), 'utf8')
+    expect(source).toContain(".default('terminal')")
+    expect(patch).toContain('mode: terminal')
+  })
+
   it('registers all eight tools', async () => {
     const harness = mount({ shell: 'auto', maxSessions: 2 })
     try {

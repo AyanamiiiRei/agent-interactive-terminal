@@ -10,5 +10,5 @@
       config:
         shell: auto
         maxSessions: 4
-        mode: exec
+        mode: terminal
         proactive: false

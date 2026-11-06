@@ -17,11 +17,11 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     shell: z<"auto" | "bash" | "zsh", "auto" | "bash" | "zsh", "volatile-defined">;
     maxSessions: z<number, number, "volatile-defined">;
     /**
-     * Which execution surface the agent should reach for. `exec` keeps the
-     * one-shot bash tool as the default, `terminal` prefers the shared
-     * interactive terminal and keeps bash as a fallback, and `force` hides bash
-     * from every agent so all shell work must use the terminal tools. `auto` is
-     * the legacy spelling of `exec` and is kept for existing profiles.
+     * Which execution surface the agent should reach for. `terminal` is the
+     * default: the shared interactive terminal is the primary surface and bash
+     * is a short fallback. `exec` keeps the one-shot bash tool first, and
+     * `force` hides bash from every agent so all shell work must use the
+     * terminal tools. `auto` is the legacy spelling of `exec`.
      */
     mode: z<"auto" | "force" | "exec" | "terminal", "auto" | "force" | "exec" | "terminal", "volatile-defined">;
     /**
@@ -33,11 +33,11 @@ export declare const Config: z<Schemastery.ObjectS<NoInfer<{
     shell: z<"auto" | "bash" | "zsh", "auto" | "bash" | "zsh", "volatile-defined">;
     maxSessions: z<number, number, "volatile-defined">;
     /**
-     * Which execution surface the agent should reach for. `exec` keeps the
-     * one-shot bash tool as the default, `terminal` prefers the shared
-     * interactive terminal and keeps bash as a fallback, and `force` hides bash
-     * from every agent so all shell work must use the terminal tools. `auto` is
-     * the legacy spelling of `exec` and is kept for existing profiles.
+     * Which execution surface the agent should reach for. `terminal` is the
+     * default: the shared interactive terminal is the primary surface and bash
+     * is a short fallback. `exec` keeps the one-shot bash tool first, and
+     * `force` hides bash from every agent so all shell work must use the
+     * terminal tools. `auto` is the legacy spelling of `exec`.
      */
     mode: z<"auto" | "force" | "exec" | "terminal", "auto" | "force" | "exec" | "terminal", "volatile-defined">;
     /**

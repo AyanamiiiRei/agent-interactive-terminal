@@ -23,15 +23,15 @@ export const Config = z.object({
     shell: z.union([z.const('auto'), z.const('zsh'), z.const('bash')]).default('auto').volatile(),
     maxSessions: z.number().step(1).min(1).max(16).default(4).volatile(),
     /**
-     * Which execution surface the agent should reach for. `exec` keeps the
-     * one-shot bash tool as the default, `terminal` prefers the shared
-     * interactive terminal and keeps bash as a fallback, and `force` hides bash
-     * from every agent so all shell work must use the terminal tools. `auto` is
-     * the legacy spelling of `exec` and is kept for existing profiles.
+     * Which execution surface the agent should reach for. `terminal` is the
+     * default: the shared interactive terminal is the primary surface and bash
+     * is a short fallback. `exec` keeps the one-shot bash tool first, and
+     * `force` hides bash from every agent so all shell work must use the
+     * terminal tools. `auto` is the legacy spelling of `exec`.
      */
     mode: z
         .union([z.const('auto'), z.const('exec'), z.const('terminal'), z.const('force')])
-        .default('exec')
+        .default('terminal')
         .volatile(),
     /**
      * Add guidance that sends REPL-shaped work, such as Python sessions, into a

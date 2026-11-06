@@ -289,7 +289,7 @@ const FONT_STACKS = [
 const STORAGE_KEY = 'ait:terminal-settings'
 
 const DEFAULT_SETTINGS = {
-  theme: 'adwaita',
+  theme: 'follow',
   fontFamily: FONT_STACKS[0].value,
   fontSize: 13,
   lineHeight: 1.15,
@@ -397,16 +397,10 @@ function normalizeSettings(raw) {
   if (raw === null || typeof raw !== 'object') return next
   const candidate = raw
   // Version 2 introduced `follow`: older saves carried a fixed palette that
-  // was only the previous default, so they migrate to following DSH once.
+  // was only the previous default. Keep any explicit fixed palette; new and
+  // migrated saves default to following DSH.
   const version = Number.isFinite(candidate.version) ? Number(candidate.version) : 0
-  if (version >= 3 && (candidate.theme === 'follow' || THEMES[candidate.theme] !== undefined)) {
-    next.theme = candidate.theme
-  } else if (version === 2 && (candidate.theme === 'follow' || candidate.theme === undefined)) {
-    // Version 3 made the dark Adwaita palette the default. A version 2 save
-    // that only inherited the old `follow` default migrates once; an explicit
-    // fixed palette is kept.
-    next.theme = 'adwaita'
-  } else if (version >= 2 && (candidate.theme === 'follow' || THEMES[candidate.theme] !== undefined)) {
+  if (version >= 2 && (candidate.theme === 'follow' || THEMES[candidate.theme] !== undefined)) {
     next.theme = candidate.theme
   }
   if (typeof candidate.fontFamily === 'string' && candidate.fontFamily.trim() !== '') next.fontFamily = candidate.fontFamily

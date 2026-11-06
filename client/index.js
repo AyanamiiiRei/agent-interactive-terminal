@@ -262,7 +262,7 @@ window.__ModuleLoader__.load({
       var modes = ['exec', 'terminal', 'force']
       var rawMode = values.mode
       var shellFallback = values.shell || 'auto'
-      var modeFallback = modes.indexOf(rawMode) >= 0 ? rawMode : 'exec'
+      var modeFallback = modes.indexOf(rawMode) >= 0 ? rawMode : 'terminal'
       var maxFallback = typeof values.maxSessions === 'number' ? values.maxSessions : 4
       var proactiveFallback = values.proactive === true
       var shellState = React.useState(shellFallback)

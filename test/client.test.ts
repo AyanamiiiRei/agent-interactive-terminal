@@ -184,12 +184,13 @@ describe('browser half', () => {
     expect(client.closeHandlers).toHaveLength(0)
   })
 
-  it('numbers terminal tabs by position and starts in the Adwaita palette', () => {
+  it('numbers terminal tabs by position and defaults to following DSH', () => {
     const source = readFileSync(resolve(process.cwd(), 'client/terminal.src.js'), 'utf8')
     expect(source).toContain('labelOf(session, index)')
     expect(source).toContain('${labels.terminal ?? \'Terminal\'} ${index + 1}')
     expect(source).toContain("label: 'Adwaita'")
-    expect(source).toContain("theme: 'adwaita'")
+    expect(source).toContain("theme: 'follow'")
+    expect(source).toContain("inputLocked: false")
   })
 
   it('builds the chunk with the panel export the loader expects', () => {
