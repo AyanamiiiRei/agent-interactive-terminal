@@ -14,7 +14,7 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
-> A DeepSeek Harness bundle: eight `terminal_*` tools, a live shared xterm panel, and password handoff that never enters the model context. Seventy-seven tests pass on Linux with Node 20/22; the full design is in [docs/design.zh.md](docs/design.zh.md).
+> One shared terminal core with two host adapters: a DeepSeek Harness bundle and a Codex/ChatGPT MCP App. Eight `terminal_*` tools, a live shared xterm panel, and password handoff that never enters the model context. Seventy-seven tests pass on Linux with Node 20/22; the full design is in [docs/design.zh.md](docs/design.zh.md).
 
 ## Why
 
@@ -72,7 +72,7 @@ codex plugin add agent-interactive-terminal@agent-interactive-terminal
 
 Start `codex` and ask it to open a terminal; the `terminal_open` result carries a local panel URL. Open that page to share the shell, take over, make it read-only, seal it, and answer password prompts. See [docs/codex.zh.md](docs/codex.zh.md) for the full walkthrough.
 
-The same terminal can also appear beside the conversation in the ChatGPT desktop app, which ships Codex as its agent. The `terminal_panel` tool declares `thread` and `global` entrypoints through MCP Extensions; after restarting the desktop app and opening a new Codex chat, choose **Interactive Terminal** in the side panel. That panel and Codex's built-in **Terminal** are separate: the built-in one is Codex's own PTY, while Interactive Terminal drives this project's `terminal_*` session, with screen snapshots, waits, a takeover lease, and read-only/sealed access.
+The same terminal can also appear beside the conversation in the ChatGPT desktop app, which ships Codex as its agent. The `interactive_terminal` tool declares a `thread` entrypoint through MCP Extensions; after restarting the desktop app and opening a new Codex chat, choose **Interactive Terminal** in the side panel. The window embeds the same React panel used by the DSH adapter, with the MCP stdio transport adapted to the panel's attach protocol. That panel and Codex's built-in **Terminal** are separate: the built-in one is Codex's own PTY, while Interactive Terminal drives this project's `terminal_*` session, with screen snapshots, waits, a takeover lease, and read-only/sealed access.
 
 Without the plugin marketplace, register the MCP server directly:
 
@@ -122,22 +122,27 @@ await session.close()
 | `terminal_close` | Close the session and its process tree |
 | `terminal_list` | List sessions, phases, sizes, and directories |
 
-## Design
+## Repository layout
 
-One screen, two projections: text for the model and serialized ANSI for the browser. Writing is an action, waiting is a query, and state is a fact; the three stay separate. Authorization is fixed when the session opens and enforced by the server, not by dropping keys in the browser.
+One repository, one `main` branch. The session core, tools, and protocol are shared; host-specific code stays in adapters rather than in a long-lived fork.
 
 ```
 src/screen/        headless xterm screen model
 src/pty/           node-pty and foreground inspection
 src/session/       sessions, registry, shell launch
 src/tools/         the eight tools
-src/attach.ts      browser duplex attach stream
-src/bridge.ts      loopback HTTP bridge used by the panel
-src/panel/         standalone panel server and browser page
 src/mcp/           MCP stdio server
+src/panel/         standalone panel and the Codex MCP App adapter
 client/            DSH browser half and xterm panel
-test/              77 tests
+plugins/codex/     Codex plugin manifest and stdio launcher
+test/              core, MCP, and panel tests
 ```
+
+The Codex adapter imports the DSH `TerminalPanel` / `TerminalView` React component and supplies an MCP-backed transport instead of a WebSocket. The GitHub repository is the source of truth for both hosts; a separate branch is only for short-lived experiments, not for maintaining the Codex port.
+
+## Design
+
+One screen, two projections: text for the model and serialized ANSI for the browser. Writing is an action, waiting is a query, and state is a fact; the three stay separate. Authorization is fixed when the session opens and enforced by the server, not by dropping keys in the browser.
 
 ## Status
 

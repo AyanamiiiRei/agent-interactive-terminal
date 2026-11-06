@@ -9,10 +9,22 @@
   },
   "main": "./dist/plugin.js",
   "types": "./dist/plugin.d.ts",
+  "bin": {
+    "ait-mcp": "./dist/mcp/cli.js",
+    "ait-panel": "./dist/panel/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/server.d.ts",
+      "import": "./dist/mcp/server.js"
+    },
+    "./panel": {
+      "types": "./dist/panel/server.d.ts",
+      "import": "./dist/panel/server.js"
     },
     "./client": "./client/index.js",
     "./locale/*.json": "./locale/*.json",
@@ -31,29 +43,35 @@
     "docs"
   ],
   "scripts": {
-    "build": "npm run build:client && tsc -p tsconfig.json",
+    "build": "npm run build:client && npm run build:panel && npm run build:app && tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.examples.json --noEmit",
     "demo": "tsx src/cli/demo.ts",
     "attach": "tsx examples/browser/server.ts",
-    "prepack": "npm run build:client && tsc -p tsconfig.json",
-    "build:client": "node scripts/build-client.mjs"
+    "prepack": "npm run build:client && npm run build:panel && npm run build:app && tsc -p tsconfig.json",
+    "build:client": "node scripts/build-client.mjs",
+    "build:panel": "node scripts/copy-panel.mjs",
+    "build:app": "node scripts/build-mcp-app.mjs",
+    "mcp": "node dist/mcp/cli.js",
+    "panel": "node dist/panel/cli.js"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.18.5",
+    "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
+    "@xterm/xterm": "^6.0.0",
     "node-pty": "^1.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "ws": "^8.22.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/ws": "^8.18.2",
-    "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/addon-webgl": "^0.19.0",
-    "@xterm/xterm": "^6.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

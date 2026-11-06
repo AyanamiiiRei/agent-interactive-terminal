@@ -478,6 +478,7 @@ function resetSettings() {
 
 /** Resolve `follow` against the scheme DSH is currently showing. */
 function resolvedThemeKey(settings, scheme) {
+  if (typeof globalThis !== 'undefined' && globalThis.__AIT_FORCE_DARK__ === true) return 'dark'
   if (settings.theme !== 'follow') return settings.theme
   return scheme === 'light' ? 'light' : 'dark'
 }
@@ -498,6 +499,7 @@ function themeFor(settings, scheme) {
  * attribute covers both an explicit switch and the system preference.
  */
 function dshScheme() {
+  if (typeof globalThis !== 'undefined' && globalThis.__AIT_FORCE_DARK__ === true) return 'dark'
   if (
     typeof document !== 'undefined' &&
     document.body !== null &&
@@ -1297,7 +1299,7 @@ export function TerminalView(props) {
       window.location.host +
       (props.attachPath || '/agent-terminal-bridge/attach') +
       '?sessionId=' +
-      encodeURIComponent(sessionId) +
+      encodeURIComponent(terminalId) +
       '&id=' +
       encodeURIComponent(terminalId)
 
@@ -1305,7 +1307,7 @@ export function TerminalView(props) {
 
     const connect = () => {
       if (disposed) return
-      const ws = new WebSocket(url)
+      const ws = new (props.WebSocketClass ?? WebSocket)(url)
       ws.binaryType = 'arraybuffer'
       socketRef.current = ws
       ws.onopen = () => {
@@ -2337,7 +2339,7 @@ export function TerminalPreferences() {
  * lease to return to the agent.
  */
 export function TerminalPanel(props) {
-  const { sessionId, api, attachPath, labels } = props
+  const { sessionId, api, attachPath, labels, WebSocketClass } = props
   const [sessions, setSessions] = React.useState([])
   const [selected, setSelected] = React.useState(null)
   const [error, setError] = React.useState(null)
@@ -2768,6 +2770,7 @@ export function TerminalPanel(props) {
                 terminalId: session.id,
                 name: session.name,
                 attachPath: attachPath,
+                WebSocketClass: WebSocketClass,
                 labels: labels,
                 active: active,
                 focusEpoch: active ? focusEpoch : 0,

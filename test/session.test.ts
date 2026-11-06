@@ -6,6 +6,13 @@ const sessions: TerminalSession[] = []
 async function open(): Promise<TerminalSession> {
   const session = await TerminalSession.open({ id: `s-${sessions.length}`, cols: 80, rows: 24, shell: '/bin/bash' })
   sessions.push(session)
+  // Startup returns as soon as the prompt marker arrives; the phase update is
+  // scheduled on the same tick, so wait for the observable idle state before
+  // asserting on it.
+  const deadline = Date.now() + 5_000
+  while (session.phase !== 'idle' && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
   return session
 }
 

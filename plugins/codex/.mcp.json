@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ait": {
+      "command": "node",
+      "args": [
+        "/home/sabu/Repositories/agent-interactive-terminal/plugins/codex/bin/ait-mcp.mjs"
+      ]
+    }
+  }
+}

@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Interactive Terminal</title>
+<link rel="stylesheet" href="/assets/xterm.css">
+<style>
+  :root { color-scheme: dark; --bg:#1e1e1e; --fg:#d4d4d4; --muted:#8a8f98; --line:#333; --accent:#61afef; --panel:#252a33; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:13px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  body { display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:8px; padding:6px 8px; border-bottom:1px solid var(--line); }
+  #tabs { display:flex; gap:4px; overflow-x:auto; flex:1; }
+  #tabs button { background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:4px 8px; white-space:nowrap; cursor:pointer; }
+  #tabs button.active { color:var(--fg); border-color:var(--accent); background:var(--panel); }
+  #tabs button .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--accent); margin-right:6px; }
+  header #new { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 9px; cursor:pointer; }
+  #status { padding:4px 10px; color:var(--muted); border-bottom:1px solid var(--line); font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
+  #notice { color:#e5c07b; font-size:12px; }
+  #notice:not(:empty) { padding:4px 10px; }
+  #queue { border-bottom:1px solid var(--line); }
+  #queue:empty { display:none; }
+  .queue-item { display:flex; align-items:center; gap:8px; padding:4px 10px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:var(--muted); }
+  .queue-item span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .queue-item button { background:transparent; color:#e06c75; border:1px solid var(--line); border-radius:4px; padding:2px 6px; cursor:pointer; }
+  #terminal { flex:1; min-height:0; padding:4px; }
+  #terminal .xterm { height:100%; }
+  footer { display:flex; gap:6px; padding:6px 8px; border-top:1px solid var(--line); flex-wrap:wrap; }
+  footer button { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 9px; cursor:pointer; }
+  footer button:hover { border-color:var(--accent); }
+  footer button:disabled { opacity:.4; cursor:default; }
+  footer button.danger { color:#e06c75; }
+  #empty { padding:24px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div id="tabs"></div>
+  <button id="new" title="Open a new terminal">+ New</button>
+</header>
+<div id="status">connecting…</div>
+<div id="notice"></div>
+<div id="queue"></div>
+<div id="terminal"></div>
+<footer>
+  <button id="takeover">Take over</button>
+  <button id="handback">Hand back</button>
+  <button id="readonly">Read-only</button>
+  <button id="seal">Seal</button>
+  <button id="close" class="danger">Close</button>
+</footer>
+<script src="/assets/xterm.js"></script>
+<script src="/assets/addon-fit.js"></script>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token') || sessionStorage.getItem('ait-panel-token') || '';
+  if (token) {
+    sessionStorage.setItem('ait-panel-token', token);
+    const clean = new URL(location.href);
+    clean.searchParams.delete('token');
+    history.replaceState(null, '', clean);
+  }
+  const $ = (id) => document.getElementById(id);
+  const tabs = $('tabs');
+  const statusEl = $('status');
+  const noticeEl = $('notice');
+  const host = $('terminal');
+  const withToken = (path) => path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+  const api = async (path, options) => {
+    const response = await fetch(withToken(path), options);
+    if (!response.ok) throw new Error((await response.text()) || response.statusText);
+    return response.json();
+  };
+  const post = (value) => ({
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(value),
+  });
+
+  let sessions = [];
+  let activeId = null;
+  let term = null;
+  let fit = null;
+  let ws = null;
+  let decoder = new TextDecoder();
+  let holder = 'agent';
+  let suspended = false;
+  let access = 'collaborate';
+  let phase = 'starting';
+  let pendingItems = [];
+  let handbackTimer = 0;
+  let noticeTimer = 0;
+  let polling = false;
+  let closing = false;
+
+  const showNotice = (text, ms = 3500) => {
+    noticeEl.textContent = text || '';
+    if (noticeTimer) clearTimeout(noticeTimer);
+    if (text && ms) noticeTimer = setTimeout(() => { noticeEl.textContent = ''; }, ms);
+  };
+  const renderStatus = () => {
+    const bits = [phase, 'lease=' + holder + (suspended ? ' (suspended)' : ''), 'access=' + access];
+    if (term) bits.push(term.cols + 'x' + term.rows);
+    if (pendingItems.length) bits.push('queued=' + pendingItems.length);
+    statusEl.textContent = bits.join(' | ');
+    $('readonly').textContent = access === 'observe' ? 'Allow agent' : 'Read-only';
+    $('seal').textContent = access === 'sealed' ? 'Reconnect agent' : 'Seal';
+    $('takeover').disabled = holder === 'human';
+    $('handback').disabled = holder !== 'human';
+  };
+  const renderQueue = () => {
+    const queue = $('queue');
+    queue.textContent = '';
+    for (const item of pendingItems) {
+      const row = document.createElement('div');
+      row.className = 'queue-item';
+      const label = document.createElement('span');
+      label.textContent = 'Agent queued: ' + (item.command || '(empty command)');
+      const cancel = document.createElement('button');
+      cancel.textContent = 'Cancel';
+      cancel.onclick = () => send({ type: 'cancel-pending', id: item.id });
+      row.appendChild(label);
+      row.appendChild(cancel);
+      queue.appendChild(row);
+    }
+  };
+  const send = (message) => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(message));
+  };
+  const scheduleHandback = () => {
+    if (handbackTimer) clearTimeout(handbackTimer);
+    if (access !== 'collaborate' || phase === 'exited') return;
+    handbackTimer = setTimeout(() => {
+      if (holder === 'human') {
+        send({ type: 'handback' });
+        holder = 'agent';
+        renderStatus();
+      }
+    }, 4000);
+  };
+  const disposeTerminal = () => {
+    closing = true;
+    if (handbackTimer) { clearTimeout(handbackTimer); handbackTimer = 0; }
+    if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+    if (term) { try { term.dispose(); } catch (_) {} term = null; fit = null; }
+    host.textContent = '';
+    pendingItems = [];
+    renderQueue();
+  };
+  const connect = (id) => {
+    disposeTerminal();
+    closing = false;
+    activeId = id;
+    term = new Terminal({
+      allowProposedApi: true,
+      cursorBlink: true,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      fontSize: 13,
+      lineHeight: 1.15,
+      scrollback: 5000,
+      theme: {
+        background: '#1e1e1e',
+        foreground: '#d4d4d4',
+        cursor: '#f2f2f2',
+        cursorAccent: '#1e1e1e',
+        selectionBackground: '#264f78',
+      },
+    });
+    fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(host);
+    try { fit.fit(); } catch (_) {}
+    term.onData((data) => {
+      if (!data) return;
+      if (holder !== 'human') {
+        send({ type: 'takeover' });
+        holder = 'human';
+        renderStatus();
+      }
+      send({ type: 'write', data });
+      scheduleHandback();
+    });
+    term.onResize(() => {
+      if (term) send({ type: 'resize', cols: term.cols, rows: term.rows });
+    });
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(protocol + '//' + location.host + withToken('/attach?sessionId=local&id=' + encodeURIComponent(id)));
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => showNotice('');
+    ws.onmessage = (event) => {
+      if (typeof event.data === 'string') {
+        let message;
+        try { message = JSON.parse(event.data); } catch (_) { return; }
+        if (message.type === 'hello') {
+          if (message.lease && typeof message.lease.holder === 'string') holder = message.lease.holder;
+          if (message.lease && message.lease.suspended) suspended = true;
+          if (message.access) access = message.access;
+          renderStatus();
+        } else if (message.type === 'snapshot') {
+          if (term) term.write(message.data || '');
+        } else if (message.type === 'status') {
+          phase = message.phase || phase;
+          holder = (message.lease && message.lease.holder) || holder;
+          suspended = Boolean(message.lease && message.lease.suspended);
+          access = message.access || access;
+          pendingItems = Array.isArray(message.pending) ? message.pending : [];
+          renderQueue();
+          renderStatus();
+        } else if (message.type === 'exited') {
+          phase = 'exited';
+          showNotice('The shell exited.' + (message.exitCode === null || message.exitCode === undefined ? '' : ' Exit code ' + message.exitCode + '.'), 0);
+          renderStatus();
+        } else if (message.type === 'denied') {
+          showNotice(message.reason || 'The terminal refused that input.');
+        }
+      } else if (term) {
+        term.write(decoder.decode(new Uint8Array(event.data), { stream: true }));
+      }
+    };
+    ws.onclose = () => {
+      if (!closing && phase !== 'exited') showNotice('Connection lost. Close this tab and open the terminal again.', 0);
+    };
+    ws.onerror = () => {
+      if (!closing && phase !== 'exited') showNotice('Connection lost.', 0);
+    };
+    renderStatus();
+  };
+  const renderTabs = () => {
+    tabs.textContent = '';
+    sessions.forEach((session, index) => {
+      const button = document.createElement('button');
+      if (session.holder === 'human') {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        button.appendChild(dot);
+      }
+      button.appendChild(document.createTextNode(session.name || ('Terminal ' + (index + 1))));
+      if (session.id === activeId) button.className = 'active';
+      button.onclick = () => {
+        if (session.id !== activeId) connect(session.id);
+      };
+      tabs.appendChild(button);
+    });
+  };
+  const refresh = async () => {
+    if (polling) return;
+    polling = true;
+    try {
+      const payload = await api('/api/state');
+      sessions = Array.isArray(payload.sessions) ? payload.sessions : [];
+      if (!sessions.some((session) => session.id === activeId)) {
+        activeId = sessions.length ? sessions[0].id : null;
+        if (activeId) connect(activeId);
+        else disposeTerminal();
+      }
+      renderTabs();
+      if (!sessions.length) statusEl.textContent = 'no open terminals';
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      polling = false;
+    }
+  };
+  const open = async () => {
+    try {
+      const session = await api('/api/open', post({ cols: 100, rows: 30 }));
+      await refresh();
+      connect(session.id);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const close = async () => {
+    if (!activeId) return;
+    try {
+      await api('/api/close', post({ id: activeId }));
+      activeId = null;
+      await refresh();
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  $('new').onclick = open;
+  $('close').onclick = close;
+  $('takeover').onclick = () => {
+    send({ type: 'takeover' });
+    holder = 'human';
+    renderStatus();
+  };
+  $('handback').onclick = () => {
+    send({ type: 'handback' });
+    holder = 'agent';
+    renderStatus();
+  };
+  $('readonly').onclick = () => {
+    access = access === 'observe' ? 'collaborate' : 'observe';
+    send({ type: 'access', value: access });
+    renderStatus();
+  };
+  $('seal').onclick = () => {
+    access = access === 'sealed' ? 'collaborate' : 'sealed';
+    send({ type: 'access', value: access });
+    renderStatus();
+  };
+  window.addEventListener('resize', () => {
+    if (fit) { try { fit.fit(); } catch (_) {} }
+  });
+  window.addEventListener('beforeunload', () => {
+    if (ws) ws.close();
+  });
+
+  refresh();
+  setInterval(refresh, 1000);
+})();
+</script>
+</body>
+</html>

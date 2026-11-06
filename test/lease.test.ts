@@ -35,7 +35,7 @@ describe('control lease', () => {
 
     session.handBack()
     expect(session.lease.holder).toBe('agent')
-    const after = await session.wait({ match: ['queued', 'human-ok'], timeoutMs: 8000 })
+    const after = await session.wait({ match: ['queued'], timeoutMs: 8000 })
     expect(after.outcome).toBe('matched')
     expect(after.view.text).toContain('queued')
     expect(after.view.text).toContain('human-ok')

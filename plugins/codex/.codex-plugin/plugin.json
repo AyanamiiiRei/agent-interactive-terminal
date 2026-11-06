@@ -1,0 +1,19 @@
+{
+  "name": "agent-interactive-terminal",
+  "description": "A real PTY terminal that the agent and the user share, with screen snapshots, named keys, a takeover lease, and password prompts that never reach the model.",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Interactive Terminal",
+    "shortDescription": "A real terminal the agent and you can share.",
+    "longDescription": "Open persistent shell sessions, read stable screen snapshots, wait on patterns, send named keys, and take over the same PTY in a browser panel. Passwords and other secrets can be typed by the person without entering the model context.",
+    "developerName": "Ribo Skubla",
+    "category": "Developer Tools",
+    "capabilities": ["terminal", "pty", "human-in-the-loop", "tool-calling"],
+    "websiteUrl": "https://github.com/AyanamiiiRei/agent-interactive-terminal",
+    "defaultPrompt": [
+      "Open a terminal and run the project's test watcher.",
+      "Start a Python REPL and work through the data step by step."
+    ]
+  }
+}

@@ -72,7 +72,7 @@ codex plugin add agent-interactive-terminal@agent-interactive-terminal
 
 启动 `codex` 后让模型打开终端，`terminal_open` 的结果会带一个本地面板地址；在浏览器里打开就能和模型共用同一个 shell，接管、只读、断开和密码输入都在面板里完成。完整说明见 [docs/codex.zh.md](docs/codex.zh.md)。
 
-同一个终端也可以出现在 ChatGPT 桌面版的对话侧边栏里。这个桌面版内部就是 Codex；`terminal_panel` 通过 MCP Extensions 声明了 `thread` 和 `global` 两个入口。重启桌面版并新建 Codex 会话后，在侧边栏里选择 **Interactive Terminal** 即可。它和 Codex 自带的 **终端** 是两套东西：自带终端是 Codex 自己的 PTY，而 Interactive Terminal 驱动本项目的 `terminal_*` 会话，有屏幕快照、等待、租约和只读/断开。
+同一个终端也可以出现在 ChatGPT 桌面版的对话侧边栏里。这个桌面版内部就是 Codex；`interactive_terminal` 通过 MCP Extensions 声明了一个 `thread` 入口。重启桌面版并新建 Codex 会话后，在侧边栏里选择 **Interactive Terminal** 即可。这个窗口复用 DSH 适配器里的同一套 React 面板，只是把 WebSocket 传输换成了 MCP stdio 适配层。它和 Codex 自带的 **终端** 是两套东西：自带终端是 Codex 自己的 PTY，而 Interactive Terminal 驱动本项目的 `terminal_*` 会话，有屏幕快照、等待、租约和只读/断开。
 
 不用插件市场时也可以直接注册 MCP server：
 
@@ -122,22 +122,27 @@ await session.close()
 | `terminal_close` | 关闭会话并清理进程树 |
 | `terminal_list` | 列出会话、相位、尺寸和目录 |
 
-## 设计
+## 仓库结构
 
-屏幕只有一份，两种投影：给模型的是文本，给浏览器的是序列化 ANSI。写入是动作，等待是查询，状态是事实，三者分开。授权在会话创建时给定，由服务端执行，不是前端丢按键。
+一个仓库，一个 `main` 分支。会话内核、工具和协议共享；宿主差异留在适配层，不用长期分支维护 Codex 移植。
 
 ```
 src/screen/        headless xterm 屏幕模型
 src/pty/           node-pty 与前台进程观测
 src/session/       会话、注册表、shell 启动
 src/tools/         八个工具
-src/attach.ts      浏览器双工 attach
-src/bridge.ts      面板使用的回环 HTTP 桥
-src/panel/         独立面板服务与浏览器页面
 src/mcp/           MCP stdio server
+src/panel/         独立面板与 Codex MCP App 适配层
 client/            DSH 浏览器半边与 xterm 面板
-test/              77 个测试
+plugins/codex/     Codex 插件清单与 stdio 启动器
+test/              核心、MCP 与面板测试
 ```
+
+Codex 适配器直接复用 DSH 的 `TerminalPanel` / `TerminalView` React 组件，只把 WebSocket 换成 MCP 传输。GitHub 仓库同时维护两个宿主；分支只用于短期实验，不用于长期维护 Codex 版本。
+
+## 设计
+
+屏幕只有一份，两种投影：给模型的是文本，给浏览器的是序列化 ANSI。写入是动作，等待是查询，状态是事实，三者分开。授权在会话创建时给定，由服务端执行，不是前端丢按键。
 
 ## 状态
 
