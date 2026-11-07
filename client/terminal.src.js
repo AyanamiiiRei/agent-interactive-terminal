@@ -1299,7 +1299,7 @@ export function TerminalView(props) {
       window.location.host +
       (props.attachPath || '/agent-terminal-bridge/attach') +
       '?sessionId=' +
-      encodeURIComponent(terminalId) +
+      encodeURIComponent(sessionId) +
       '&id=' +
       encodeURIComponent(terminalId)
 
@@ -2766,7 +2766,7 @@ export function TerminalPanel(props) {
               },
               React.createElement(TerminalView, {
                 key: session.id,
-                sessionId: sessionId,
+                sessionId: WebSocketClass ? session.id : sessionId,
                 terminalId: session.id,
                 name: session.name,
                 attachPath: attachPath,
