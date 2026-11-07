@@ -817,54 +817,6 @@ const PANEL_CSS = `
 /* The settings sheet lives inside the dark terminal card, so it uses the
    same graphite surface and warm accent as the rest of the panel. The embedded
    copy on the light plugin page is deliberately excluded. */
-.ait-panel .ait-sheet:not(.ait-sheet-embedded){border-color:rgba(255,255,255,0.10);border-radius:12px;background:linear-gradient(180deg,#161d26 0%,#10161d 100%);color:#e8edf2;box-shadow:0 24px 60px rgba(0,0,0,0.48),inset 0 1px 0 rgba(255,255,255,0.04)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-title{color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-head{border-bottom:1px solid rgba(255,255,255,0.06)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-head .ait-icon{color:rgba(232,237,242,0.56)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-head .ait-icon:hover{background:rgba(255,255,255,0.08);color:#ffffff}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tabs{background:rgba(255,255,255,0.06)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tab{color:rgba(232,237,242,0.56)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tab:hover{color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-tab[data-on="true"]{background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.12);color:#ffffff}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-hint,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-group-label,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row-hint,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-saved{color:rgba(232,237,242,0.56)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-card{border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.035)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row{color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row-label{color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-row + .ait-row::before,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme + .ait-theme::before{background:rgba(255,255,255,0.07)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-select,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-input{background:rgba(255,255,255,0.06);color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-select:disabled,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-input:disabled{color:rgba(232,237,242,0.30)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-select:focus-visible,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-input:focus-visible{box-shadow:0 0 0 2px #f2a65a}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper{background:rgba(255,255,255,0.06)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment button,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper button{color:rgba(232,237,242,0.56)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment button:hover,
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper button:hover{color:#e8edf2;background:rgba(255,255,255,0.08)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-segment button[data-on="true"]{background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.12);color:#ffffff}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-stepper-value{color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme{color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme:hover{background:rgba(255,255,255,0.05)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme[data-on="true"]{background:rgba(242,166,90,0.10)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-theme-check{color:#f2a65a}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-color{border-color:rgba(255,255,255,0.14)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-key{border-color:rgba(255,255,255,0.10);background:rgba(255,255,255,0.05);color:#e8edf2}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-key:hover{background:rgba(255,255,255,0.08)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-key[data-recording="true"]{border-color:#f2a65a;color:#f2a65a;box-shadow:0 0 0 2px rgba(242,166,90,0.16)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-switch{background:rgba(255,255,255,0.16)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-switch::after{background:#fbfbfb}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-switch[data-on="true"]{background:#f2a65a}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-foot{border-top-color:rgba(255,255,255,0.07)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-ghost{color:#f2a65a}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-ghost:hover{background:rgba(242,166,90,0.10)}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-body{scrollbar-color:rgba(255,255,255,0.16) transparent}
-.ait-panel .ait-sheet:not(.ait-sheet-embedded) .ait-sheet-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16)}
 
 /* Agent activity: a rotating RGB border and travelling light on the top bar
    and the black tablecloth below the terminal card. */
@@ -1911,7 +1863,7 @@ function TerminalSettings(props) {
   // resolves to right now instead of a fixed one.
   const themeButton = (key) => {
     const swatch = THEMES[key === 'follow' ? resolvedThemeKey(settings, scheme) : key].theme
-    const label = key === 'follow' ? '跟随 DSH' : THEMES[key].label
+    const label = key === 'follow' ? '跟随系统（宿主软件）' : THEMES[key].label
     return React.createElement(
       'button',
       {

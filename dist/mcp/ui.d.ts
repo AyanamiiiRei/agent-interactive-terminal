@@ -1,7 +1,7 @@
 import type { TerminalRegistry } from '../session/registry.js';
 import type { McpTool } from './tool.js';
 /** Resource URI of the terminal panel app. */
-export declare const UI_URI = "ui://terminal/panel-v12.html";
+export declare const UI_URI = "ui://terminal/panel-v13.html";
 /** MIME type the host expects for an MCP App template. */
 export declare const UI_MIME = "text/html;profile=mcp-app";
 /**
