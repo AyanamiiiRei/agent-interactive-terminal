@@ -733,6 +733,8 @@ const PANEL_CSS = `
 .ait-backdrop{position:absolute;inset:0;z-index:4;background:var(--dsw-alias-bg-mask-1);animation:ait-fade-in 320ms cubic-bezier(0.32,0.72,0,1)}
 
 .ait-sheet{position:absolute;inset:8px;z-index:5;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);box-shadow:none;backdrop-filter:none;animation:ait-sheet-in 320ms cubic-bezier(0.32,0.72,0,1)}
+.ait-panel[data-theme="dark"] .ait-sheet{--dsw-alias-bg-base:#10161d;--dsw-alias-bg-layer-1:#1a222c;--dsw-alias-bg-mask-1:rgba(0,0,0,0.50);--dsw-alias-border-l1:rgba(255,255,255,0.10);--dsw-alias-border-l2:rgba(255,255,255,0.16);--dsw-alias-label-primary:#e8edf2;--dsw-alias-label-secondary:rgba(232,237,242,0.56);--dsw-alias-label-tertiary:rgba(232,237,242,0.30);--dsw-alias-link:#f2a65a;--dsw-alias-interactive-bg-hover:rgba(255,255,255,0.07);--dsw-alias-settings-card-fill:rgba(255,255,255,0.035);--dsw-alias-settings-card-stroke:rgba(255,255,255,0.08);--dsw-alias-switch-thumb:#fbfbfb}
+.ait-panel[data-theme="light"] .ait-sheet{--dsw-alias-bg-base:#ffffff;--dsw-alias-bg-layer-1:#f4f5f7;--dsw-alias-bg-mask-1:rgba(15,17,21,0.24);--dsw-alias-border-l1:rgba(15,17,21,0.10);--dsw-alias-border-l2:rgba(15,17,21,0.16);--dsw-alias-label-primary:#1f2328;--dsw-alias-label-secondary:rgba(31,35,40,0.62);--dsw-alias-label-tertiary:rgba(31,35,40,0.38);--dsw-alias-link:#b45309;--dsw-alias-interactive-bg-hover:rgba(15,17,21,0.06);--dsw-alias-settings-card-fill:#ffffff;--dsw-alias-settings-card-stroke:rgba(15,17,21,0.10);--dsw-alias-switch-thumb:#ffffff}
 .ait-sheet,.ait-sheet-foot,.ait-themes,.ait-row-label,.ait-group-label,.ait-sheet-tabs{user-select:none}
 .ait-sheet-embedded{position:static;inset:auto;display:block;overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;animation:none}
 .ait-sheet-embedded .ait-sheet-tabs{margin:0 0 8px}
@@ -2592,7 +2594,7 @@ export function TerminalPanel(props) {
 
   return React.createElement(
     'section',
-    { className: 'ait-panel', style: shellStyle },
+    { className: 'ait-panel', style: shellStyle, 'data-theme': scheme },
     React.createElement(
       'div',
       { className: 'ait-panel-tabs' },

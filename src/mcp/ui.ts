@@ -17,7 +17,7 @@ import type { JsonSchema } from '../tools/index.js'
 import type { McpTool, McpToolResult } from './tool.js'
 
 /** Resource URI of the terminal panel app. */
-export const UI_URI = 'ui://terminal/panel-v13.html'
+export const UI_URI = 'ui://terminal/panel-v14.html'
 /** MIME type the host expects for an MCP App template. */
 export const UI_MIME = 'text/html;profile=mcp-app'
 
