@@ -9,7 +9,11 @@ if (rootElement === null) throw new Error('missing #app')
 rootElement.textContent = ''
 document.body.setAttribute('data-ds-dark-theme', '')
 document.documentElement.setAttribute('data-ds-dark-theme', '')
-globalThis.__AIT_FORCE_DARK__ = true
+try {
+  const key = 'ait:terminal-settings'
+  const existing = JSON.parse(localStorage.getItem(key) ?? '{}')
+  localStorage.setItem(key, JSON.stringify({ ...existing, version: 3, theme: 'dark' }))
+} catch { /* the host may deny localStorage */ }
 document.documentElement.style.background = '#0f1115'
 const layoutStyle = document.createElement('style')
 layoutStyle.textContent = 'html,body,#app{height:100%;margin:0;background:#0f1115}body{overflow:hidden}'
@@ -179,8 +183,6 @@ class McpSocket {
   }
 }
 
-globalThis.WebSocket = McpSocket
-
 let autoOpened = false
 const api = {
   async state() {
@@ -218,7 +220,8 @@ async function boot() {
         api,
         labels,
         attachPath: '/mcp-attach',
-        WebSocketClass: McpSocket,
+        socketFactory: McpSocket,
+        attachSessionFor: (_panelId, tabId) => tabId,
       }),
     )
     return
