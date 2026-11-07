@@ -1,0 +1,22 @@
+{
+  "name": "agent-interactive-terminal-kimi-plugin",
+  "version": "0.6.9-kimi.1",
+  "private": true,
+  "description": "Self-contained Kimi Code plugin packaging for agent-interactive-terminal.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "verify": "node scripts/verify.mjs"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
+    "@xterm/xterm": "6.0.0",
+    "node-pty": "1.1.0",
+    "ws": "8.22.1"
+  }
+}
