@@ -11,7 +11,7 @@
  */
 import { SessionError } from '../errors.js';
 /** Resource URI of the terminal panel app. */
-export const UI_URI = 'ui://terminal/panel-v11.html';
+export const UI_URI = 'ui://terminal/panel-v12.html';
 /** MIME type the host expects for an MCP App template. */
 export const UI_MIME = 'text/html;profile=mcp-app';
 const APP_ONLY_META = {
