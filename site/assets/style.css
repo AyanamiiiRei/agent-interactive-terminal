@@ -182,6 +182,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 
 /* ---------- stage ---------- */
 .stage-wrap {
+  scroll-margin-top: 72px;
   max-width: var(--max);
   margin: 0 auto;
   padding: 26px 22px 10px;
@@ -561,6 +562,7 @@ code, pre { font-family: var(--mono); font-variant-ligatures: none; }
 
 /* ---------- tools ---------- */
 .tools, .install {
+  scroll-margin-top: 72px;
   max-width: var(--max);
   margin: 0 auto;
   padding: 46px 22px 0;
