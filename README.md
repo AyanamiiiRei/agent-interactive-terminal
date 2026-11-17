@@ -14,6 +14,8 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
+[**▶ Live demo**](https://ayanamiiirei.github.io/agent-interactive-terminal/) · a recorded replay of the shared panel, with the password handoff and the read-only/sealed gates you can click through.
+
 > One shared terminal core with two host adapters: a DeepSeek Harness bundle and a Codex/ChatGPT MCP App. Eight `terminal_*` tools, a live shared xterm panel, and password handoff that never enters the model context. Seventy-seven tests pass on Linux with Node 20/22; the full design is in [docs/design.zh.md](docs/design.zh.md).
 
 ## Why

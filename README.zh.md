@@ -14,6 +14,8 @@
   <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal/stargazers"><img src="https://img.shields.io/github/stars/AyanamiiiRei/agent-interactive-terminal?style=social" alt="Stars"></a>
 </p>
 
+[**▶ 在线演示**](https://ayanamiiirei.github.io/agent-interactive-terminal/) —— 共享面板的录制回放，密码交接和只读/封禁都可以自己点一遍。
+
 > DeepSeek Harness bundle：八个 `terminal_*` 工具、一块实时共享的 xterm 面板，以及不经过模型上下文的密码交接。77 个测试在 Linux 的 Node 20/22 上通过；完整设计见 [docs/design.zh.md](docs/design.zh.md)。
 
 ## 为什么

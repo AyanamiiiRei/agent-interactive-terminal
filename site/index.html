@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Interactive Terminal — 一个终端，你和模型共用</title>
+<meta name="description" content="Stateful PTY terminal sessions where an agent and a person share the same screen. Screen snapshots, waits, keyboard takeover, and password handoff that never enters the model context.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#080b10">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Agent Interactive Terminal">
+<meta property="og:description" content="一个终端，你和模型共用。屏幕快照、等待、接管、密码交接。">
+<meta property="og:url" content="https://ayanamiiirei.github.io/agent-interactive-terminal/">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="./">
+    <span class="logo" aria-hidden="true">▍</span>
+    <span>Agent Interactive Terminal</span>
+  </a>
+  <nav class="nav">
+    <a href="#demo" data-zh="演示" data-en="Demo">演示</a>
+    <a href="#tools" data-zh="工具" data-en="Tools">工具</a>
+    <a href="#install" data-zh="安装" data-en="Install">安装</a>
+    <a class="gh" href="https://github.com/AyanamiiiRei/agent-interactive-terminal" target="_blank" rel="noreferrer">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      <span>GitHub</span>
+    </a>
+    <button id="langBtn" class="lang" type="button" aria-label="Switch language">EN</button>
+  </nav>
+</header>
+
+<main>
+
+<section class="hero">
+  <p class="eyebrow">
+    <span class="dot" aria-hidden="true"></span>
+    <span data-zh="MIT · Node 20+ · 77 个测试" data-en="MIT · Node 20+ · 77 tests">MIT · Node 20+ · 77 个测试</span>
+  </p>
+  <h1>
+    <span data-zh="把终端交给模型，" data-en="Hand the terminal to the model,">把终端交给模型，</span><br>
+    <span class="grad" data-zh="键盘还在你手里。" data-en="keep the keyboard.">键盘还在你手里。</span>
+  </h1>
+  <p class="lede" data-zh="普通 exec 工具没有 TTY：程序不进交互模式、长任务看不见、密码漏进对话记录、人和模型没法共用同一个 shell。这里把终端变成有身份、有屏幕、有相位、有租约的资源。" data-en="A plain exec tool has no TTY: programs never enter interactive mode, long work is invisible, passwords leak into the transcript, and a person cannot share the same shell with the model. This turns a terminal into a resource with identity, a screen, a phase, and a lease.">
+    普通 exec 工具没有 TTY：程序不进交互模式、长任务看不见、密码漏进对话记录、人和模型没法共用同一个 shell。这里把终端变成有身份、有屏幕、有相位、有租约的资源。
+  </p>
+  <div class="cta">
+    <a class="btn primary" href="#demo" data-zh="看回放 ↓" data-en="Watch the replay ↓">看回放 ↓</a>
+    <a class="btn" href="https://github.com/AyanamiiiRei/agent-interactive-terminal" target="_blank" rel="noreferrer" data-zh="读源码" data-en="Read the source">读源码</a>
+  </div>
+  <div class="honest" data-zh="下面的画面是按真实工具返回格式录制的回放，不是真的 shell。模型那一侧的文字、状态行的字段顺序、错误码，都和实现一致。" data-en="What follows is a replay recorded from the real tool result format, not a live shell. The text the model sees, the status-line fields, and the error codes all match the implementation.">
+    下面的画面是按真实工具返回格式录制的回放，不是真的 shell。模型那一侧的文字、状态行的字段顺序、错误码，都和实现一致。
+  </div>
+</section>
+
+<section class="stage-wrap" id="demo">
+  <div class="stage-head">
+    <h2 data-zh="共用同一个屏幕" data-en="One screen, shared">共用同一个屏幕</h2>
+    <div class="scenarios" id="scenarios" role="tablist" aria-label="Scenarios"></div>
+  </div>
+
+  <div class="stage">
+    <div class="col agent-col">
+      <div class="col-head">
+        <span data-zh="模型这一侧" data-en="The model's side">模型这一侧</span>
+        <span class="muted" data-zh="tool calls" data-en="tool calls">tool calls</span>
+      </div>
+      <div class="chat" id="chat" aria-live="polite"></div>
+    </div>
+
+    <div class="col term-col">
+      <div class="panel">
+        <div class="tabs">
+          <span class="tab"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M1 3h14v10H1zM2 4v8h12V4z"/><path fill="currentColor" d="M4 6.5 5.2 7.7 4 8.9l.7.7L6.6 7.7 4.7 5.8zM7 9.5h4V10H7z"/></svg></span>
+          <span class="tab active" data-zh="终端 1" data-en="Terminal 1">终端 1</span>
+          <span class="tabs-right">⌘</span>
+        </div>
+        <div class="panelbar">
+          <span class="pill" id="pill"><span class="pdot"></span><span id="pillText">Agent 可操作</span></span>
+          <div class="panel-actions">
+            <span class="pending" id="pendingChip" hidden></span>
+            <button class="icon-btn" data-act="handback" id="handbackBtn" hidden type="button" data-tip-zh="交还键盘" data-tip-en="Hand back the keyboard">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 2a6 6 0 1 0 3.3.99l-.66 1.1A4.75 4.75 0 1 1 8 3.25V5l2.5-2L8 1z"/></svg>
+            </button>
+            <button class="icon-btn" data-act="takeover" id="takeoverBtn" type="button" data-tip-zh="接管键盘" data-tip-en="Take the keyboard">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M11.6 1.5 14.5 4.4l-1.7 1.7-1-1-6.3 6.3-.8 2.6-2.6.8.8-2.6 6.3-6.3-1-1z"/></svg>
+            </button>
+            <button class="icon-btn" data-act="lock" id="lockBtn" type="button" data-tip-zh="只读" data-tip-en="Read-only">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.5 7V5a3.5 3.5 0 1 1 7 0v2H13v8H3V7zm1.5 0h4V5a2 2 0 1 0-4 0z"/></svg>
+            </button>
+            <button class="icon-btn" data-act="seal" id="sealBtn" type="button" data-tip-zh="封禁" data-tip-en="Seal">
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 1.5 14 3.5v5c0 3.2-2.6 5.4-6 6.5-3.4-1.1-6-3.3-6-6.5v-5z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="light" id="light" aria-hidden="true"></div>
+        <div class="term" id="term" tabindex="0" role="log" aria-live="off">
+          <div class="term-lines" id="termLines"></div>
+        </div>
+        <div class="gate" id="gate" hidden>
+          <span class="gate-ico" aria-hidden="true">→</span>
+          <span id="gateText"></span>
+          <button class="gate-skip" id="gateSkip" type="button" data-zh="跳过" data-en="Skip">跳过</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="transport">
+    <div class="tp-left">
+      <button class="btn-icon" id="btnPlay" type="button" aria-label="Play/Pause">
+        <svg id="icoPlay" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M4 2.5v11l9-5.5z"/></svg>
+        <svg id="icoPause" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" hidden><path fill="currentColor" d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>
+      </button>
+      <button class="btn-icon" id="btnStep" type="button" aria-label="Next step">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3 2.5v11l7.5-5.5zM11.5 2.5h2v11h-2z"/></svg>
+      </button>
+      <button class="btn-icon" id="btnRestart" type="button" aria-label="Restart">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 3a5 5 0 1 1-4.9 6H4.6A4 4 0 1 0 8 4v2.5L5 3.75 8 1z"/></svg>
+      </button>
+      <button class="btn-icon speed" id="speedBtn" type="button" aria-label="Speed">1×</button>
+    </div>
+    <p class="caption" id="caption"></p>
+    <div class="tp-right">
+      <span class="beatnum" id="beatNum">0 / 0</span>
+      <div class="progress" id="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+    </div>
+  </div>
+</section>
+
+<section class="cards">
+  <article class="card">
+    <h3 data-zh="等待是一个查询" data-en="A wait is a query">等待是一个查询</h3>
+    <p data-zh="terminal_wait 等的是屏幕状态：命中子串、静默、相位、进程退出。命令在跑和程序在问你话是两种事实，返回的 phase 会区分它们，模型该做的动作也就不同。" data-en="terminal_wait watches screen state: matched substring, silence, phase, process exit. “a command is running” and “a program is asking you something” are different facts, and the returned phase distinguishes them.">terminal_wait 等的是屏幕状态：命中子串、静默、相位、进程退出。命令在跑和程序在问你话是两种事实，返回的 phase 会区分它们，模型该做的动作也就不同。</p>
+  </article>
+  <article class="card">
+    <h3 data-zh="一屏两投影" data-en="One screen, two projections">一屏两投影</h3>
+    <p data-zh="人的浏览器拿到序列化 ANSI，模型拿到文本快照。同一块屏幕，两种读法，谁都不用替谁转述。多个等待器互不消费，因为判断依据是屏幕而不是输出偏移。" data-en="The browser gets serialized ANSI; the model gets a text snapshot. Same screen, two readings, nobody has to relay for the other. Waiters never consume each other's output because they judge by screen, not offset.">人的浏览器拿到序列化 ANSI，模型拿到文本快照。同一块屏幕，两种读法，谁都不用替谁转述。多个等待器互不消费，因为判断依据是屏幕而不是输出偏移。</p>
+  </article>
+  <article class="card">
+    <h3 data-zh="授权在服务端" data-en="Authorization is server-side">授权在服务端</h3>
+    <p data-zh="只读和封禁是会话的属性，不是浏览器里少发几个按键。封禁之后连尺寸、工作目录和名字都不再被列出，会话列表里只剩一条被隐去的记录。" data-en="Read-only and sealed are session properties, not a browser that stops sending keys. Once sealed, not even size, cwd, or name are listed; the session list keeps only a redacted record.">只读和封禁是会话的属性，不是浏览器里少发几个按键。封禁之后连尺寸、工作目录和名字都不再被列出，会话列表里只剩一条被隐去的记录。</p>
+  </article>
+</section>
+
+<section class="tools" id="tools">
+  <h2 data-zh="八个工具" data-en="Eight tools">八个工具</h2>
+  <p class="section-note" data-zh="terminal_send 是主力，其余按需出现。上面回放里出现的调用，返回格式就是这里的真实格式。" data-en="terminal_send does the heavy lifting; the rest appear as needed. Every call in the replay above returns exactly the format listed here.">terminal_send 是主力，其余按需出现。上面回放里出现的调用，返回格式就是这里的真实格式。</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tool</th><th data-zh="作用" data-en="What it does">作用</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>terminal_open</code></td><td data-zh="建会话，返回 id、状态行和初始屏幕" data-en="Open a session; returns id, status line, initial screen">建会话，返回 id、状态行和初始屏幕</td></tr>
+        <tr><td><code>terminal_send</code></td><td data-zh="写入并等待结算；被人握键盘时立即返回排队标记" data-en="Write and wait for a settlement; returns a queued marker immediately while a person holds the keyboard">写入并等待结算；被人握键盘时立即返回排队标记</td></tr>
+        <tr><td><code>terminal_wait</code></td><td data-zh="只等不写，适合看长任务和守日志" data-en="Wait without writing; good for long jobs and log watching">只等不写，适合看长任务和守日志</td></tr>
+        <tr><td><code>terminal_snapshot</code></td><td data-zh="取屏幕或输出尾部，带 sinceRevision 只回变化的行" data-en="Read the screen or output tail; with sinceRevision returns only changed rows">取屏幕或输出尾部，带 sinceRevision 只回变化的行</td></tr>
+        <tr><td><code>terminal_key</code></td><td data-zh="按一个命名键，例如 ctrl-c 或 page-down" data-en="Press one named key, such as ctrl-c or page-down">按一个命名键，例如 ctrl-c 或 page-down</td></tr>
+        <tr><td><code>terminal_resize</code></td><td data-zh="改尺寸，全屏程序立刻收到新大小" data-en="Resize; full-screen programs receive the new size immediately">改尺寸，全屏程序立刻收到新大小</td></tr>
+        <tr><td><code>terminal_close</code></td><td data-zh="关会话，连同进程树一起收干净" data-en="Close the session and its process tree">关会话，连同进程树一起收干净</td></tr>
+        <tr><td><code>terminal_list</code></td><td data-zh="列会话的相位、尺寸、目录和名字；被封禁的会隐去" data-en="List phase, size, cwd and name; sealed sessions are redacted">列会话的相位、尺寸、目录和名字；被封禁的会隐去</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="install" id="install">
+  <h2 data-zh="装起来" data-en="Install">装起来</h2>
+  <div class="install-grid">
+    <div>
+      <h4 data-zh="在 DeepSeek Harness 里" data-en="Inside DeepSeek Harness">在 DeepSeek Harness 里</h4>
+      <p data-zh="Plugins → Discover 里添加这个索引，搜索 agent-interactive-terminal，首次安装批准 node-pty 的构建脚本。" data-en="Add this index under Plugins → Discover, search for agent-interactive-terminal, and approve the node-pty build script on first install.">Plugins → Discover 里添加这个索引，搜索 agent-interactive-terminal，首次安装批准 node-pty 的构建脚本。</p>
+      <pre><code>https://raw.githubusercontent.com/AyanamiiiRei/agent-interactive-terminal/main/plugin-market.json</code></pre>
+    </div>
+    <div>
+      <h4 data-zh="从源码" data-en="From source">从源码</h4>
+      <p data-zh="Node 20 以上，外加 node-pty 需要的 C++ 工具链。装好之后 npm run demo 就能看到模型那一侧读到什么。" data-en="Node 20 or newer, plus the C++ toolchain node-pty needs. Then npm run demo shows you exactly what the model side receives.">Node 20 以上，外加 node-pty 需要的 C++ 工具链。装好之后 npm run demo 就能看到模型那一侧读到什么。</p>
+      <pre><code>git clone https://github.com/AyanamiiiRei/agent-interactive-terminal.git
+cd agent-interactive-terminal
+npm install &amp;&amp; npm run build
+npm run demo -- "git status"</code></pre>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>MIT · <a href="https://github.com/AyanamiiiRei/agent-interactive-terminal" target="_blank" rel="noreferrer">AyanamiiiRei/agent-interactive-terminal</a></span>
+  <span class="muted" data-zh="本页是录制回放，不连接任何服务器，也不收集任何数据。" data-en="This page is a recorded replay. It connects to nothing and collects nothing.">本页是录制回放，不连接任何服务器，也不收集任何数据。</span>
+</footer>
+
+<script src="assets/scenarios.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
